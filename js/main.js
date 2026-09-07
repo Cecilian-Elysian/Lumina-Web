@@ -261,11 +261,14 @@ function renderWall(images) {
 
     // 生成本行的卡片 HTML（data-index 记录在全墙 gallery 中的索引，灯箱要用）
     // 卡片小图用缩略图（thumb）加载更快；name 经过转义防 XSS
+    // <source media≤768px>（与 css 断点一致）：手机端只加载缩略图，
+    // 避免 DPR≥2 的手机按 srcset 2x 规则去下载多 MB 原图
     const cardsHtml = slice
       .map((img, i) => {
         const globalIndex = r + i * rowCount; // 反推该卡片在 gallery 中的下标
         return (
           '<figure class="card" data-index="' + globalIndex + '">' +
+          `<source media="(max-width: 768px)" srcset="${escapeHtml(img.thumb)}">` +
           `<img src="${escapeHtml(img.thumb)}"` +
           ` srcset="${escapeHtml(img.srcset)}"` +
           ' loading="lazy" decoding="async"' +
