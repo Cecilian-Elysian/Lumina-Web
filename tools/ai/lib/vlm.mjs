@@ -17,7 +17,7 @@
  * ============================================================ */
 
 const DEFAULT_BASE = 'https://api.MiniMax.chat/v1';
-const DEFAULT_MODEL = 'MiniMax-VL';
+const DEFAULT_MODEL = 'MiniMax-M3';
 
 /**
  * 把 CONFIG.characters 过滤成允许表(去掉无名项)。
@@ -94,7 +94,9 @@ export async function recognizeCharacter(opts) {
             { type: 'image_url', image_url: { url: 'data:' + mimeType + ';base64,' + imageBase64 } },
           ],
         }],
-        max_tokens: 32,
+        // 推理模型(MiniMax-M3)会输出 <think>...</think> 块后再给结论,
+        // max_tokens 留足空间容纳推理+结论;默认 1024 足够
+        max_tokens: 1024,
         temperature: 0,
       }),
     });
@@ -108,7 +110,11 @@ export async function recognizeCharacter(opts) {
   }
 
   const json = await res.json().catch(() => null);
-  const reply = (json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content || '').trim();
+  // 兼容两种响应位置:有的 API 把推理放 reasoning_content,有的直接拼到 content 前面
+  const message = json && json.choices && json.choices[0] && json.choices[0].message;
+  let reply = (message && (message.content || message.reasoning_content || '')).trim();
+  // 去掉 <think>...</think> 块(推理模型会把思考过程放这里)
+  reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
   if (!reply) throw new Error('MiniMax 响应无 content');
   if (/^NONE$/i.test(reply)) return null;
