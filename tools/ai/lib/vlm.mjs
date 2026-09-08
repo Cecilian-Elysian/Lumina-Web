@@ -27,9 +27,9 @@ export function buildAllowlist(characters) {
 }
 
 /**
- * 构造 prompt:让 VLM 只从 allowlist 里选。
+ * 构造 constrained 模式 prompt:让 VLM 只从 allowlist 里选。
  */
-function buildPrompt(allowlist) {
+function buildPromptForConstrained(allowlist) {
   const lines = allowlist
     .map((c) => {
       const aliases = (c.aliases && c.aliases.length > 0) ? ' (' + c.aliases.join(', ') + ')' : '';
@@ -47,16 +47,30 @@ function buildPrompt(allowlist) {
 }
 
 /**
+ * 构造 open 模式 prompt:不限制角色库,让 VLM 自由识别图中角色。
+ * 返回的 reply 由上游脚本聚合去重 + 用 prts.wiki 别名表归一化。
+ */
+function buildPromptForOpen() {
+  return [
+    '你是一个动漫/游戏角色识别助手。请告诉我图中角色的全名。',
+    '优先级: 中文全名 > 英文全名 > 日文/罗马音。',
+    '如果图中没有具体角色(路人、风景、物品、UI 截图、文字插画等),只回复:NONE',
+    '只回名字,不要解释、不要标点、不要 JSON、不要 Markdown。',
+  ].join('\n');
+}
+
+/**
  * 调 MiniMax VLM,返回角色名或 null。
  *
  * @param {Object} opts
  * @param {string} opts.imageBase64  base64 编码(不含 data: 前缀)
  * @param {string} [opts.mimeType='image/jpeg']
- * @param {Array<{name:string,aliases?:string[]}>} opts.allowlist
+ * @param {Array<{name:string,aliases?:string[]}>} [opts.allowlist]  constrained 模式必填
+ * @param {'constrained'|'open'} [opts.mode='constrained']  open 模式跳过 allowlist 校验,自由识别
  * @param {string} opts.apiKey
- * @param {string} [opts.model='MiniMax-VL']
+ * @param {string} [opts.model='MiniMax-M3']
  * @param {string} [opts.apiBase='https://api.MiniMax.chat/v1']
- * @returns {Promise<string|null>}
+ * @returns {Promise<string|null>} constrained: name 或 null;open: 原始 reply(可能含 NONE)
  */
 export async function recognizeCharacter(opts) {
   const {
@@ -66,15 +80,20 @@ export async function recognizeCharacter(opts) {
     apiKey,
     model = DEFAULT_MODEL,
     apiBase = DEFAULT_BASE,
+    mode = 'constrained',
   } = opts || {};
 
   if (!apiKey) throw new Error('MiniMax API key 未配置');
-  if (!Array.isArray(allowlist) || allowlist.length === 0) {
-    throw new Error('allowlist 为空;请在 CONFIG.characters 中维护角色名单');
-  }
   if (!imageBase64) throw new Error('imageBase64 缺失');
+  if (mode === 'constrained') {
+    if (!Array.isArray(allowlist) || allowlist.length === 0) {
+      throw new Error('allowlist 为空;请在 CONFIG.characters 中维护角色名单');
+    }
+  }
 
-  const prompt = buildPrompt(allowlist);
+  const prompt = mode === 'open'
+    ? buildPromptForOpen()
+    : buildPromptForConstrained(allowlist);
   const url = apiBase.replace(/\/+$/, '') + '/chat/completions';
 
   let res;
@@ -119,7 +138,11 @@ export async function recognizeCharacter(opts) {
   if (!reply) throw new Error('MiniMax 响应无 content');
   if (/^NONE$/i.test(reply)) return null;
 
-  // 精确匹配 name 或任一 alias
+  // open 模式:不做 allowlist 匹配,直接返回原始 reply
+  // (上游脚本负责聚合 + 用 prts.wiki 别名表归一化)
+  if (mode === 'open') return reply;
+
+  // constrained 模式:精确匹配 name 或任一 alias
   let hit = allowlist.find((c) => c.name === reply || (c.aliases || []).includes(reply));
   if (hit) return hit.name;
 

@@ -19,8 +19,12 @@ tools/
 │
 └── ai/                          ← ★ AI 工具（命令行）
     ├── build-focal-points.mjs   ← 人脸检测 + 批量分析（含 --download-only）
-    ├── build-character-tags.mjs ← MiniMax VLM 批量识别角色
-    └── analyze-images.mjs       ← 列出 viewer 当前所有图片 URL
+    ├── build-character-tags.mjs ← MiniMax VLM 批量识别角色（constrained 模式）
+    ├── discover-characters.mjs  ← 自动生成 allowlist 候选名单（open 模式）
+    ├── analyze-images.mjs       ← 列出 viewer 当前所有图片 URL
+    └── lib/
+        ├── vlm.mjs              ← MiniMax VLM 客户端（constrained/open 双模式）
+        └── aliases.mjs          ← prts.wiki 干员清单加载 + 别名归一化
 ```
 
 ---
@@ -185,6 +189,89 @@ node ai/build-character-tags.mjs --force
 2. 本地跑 `npm run char:upstream`（增量处理新 URL）
 3. 检查失败记录、重跑或手动覆盖
 4. `git add js/character-tags.js && git commit && git push` → Cloudflare Pages 自动部署
+
+---
+
+## 角色发现（自动生成 allowlist 候选）
+
+`build-character-tags.mjs` 需要你事先在 `CONFIG.characters` 维护允许名单。如果你**不知道图床里到底有哪些角色**，可以用 `discover-characters.mjs` 自动扫描一遍，让 VLM 告诉你"这堆图里有谁"，你再 review 后填进 `characters`。
+
+### 准备
+
+同 `npm run char` —— 在 viewer 根目录 `.dev.vars` 写好 `MINIMAX_API_KEY` 即可。
+
+### 用法
+
+```bash
+cd tools
+
+# 干跑 1 张：只下载 + 解析，不调 VLM、不写文件
+npm run char:discover:dry
+
+# 全量发现（fallbackImages 默认 16 张，约 ¥0.02 token）
+npm run char:discover
+
+# 从真实图床拉数据再发现
+npm run char:discover:full
+
+# 关闭 prts.wiki 别名归一化（默认开）
+node ai/discover-characters.mjs --no-canonicalize
+
+# 强制重跑（忽略已有缓存）
+node ai/discover-characters.mjs --force
+
+# 调整并发 / 限制
+node ai/discover-characters.mjs --concurrency=6 --limit=20
+```
+
+### 产物
+
+- `tools/.cache/canonical-names.json` — prts.wiki 官方干员清单（含异格、变体），首次拉取后缓存
+- `tools/.cache/discovered-names.json` — 本次发现的原始聚合（{ url: { reply, canonical, status } }）
+- `tools/.cache/discovered-failed.json` — 失败记录
+- **`../js/character-allowlist-suggested.js`** — 给前端预览用的候选名单（已被 `.gitignore` 忽略，**不会进 GitHub**）
+
+`suggested.js` 的结构：
+
+```js
+window.CHARACTER_ALLOWLIST_SUGGESTED = [
+  { name: '德克萨斯', aliases: ['Texas', '德狗'], count: 5 },
+  { name: '阿米娅',   aliases: ['Amiya'],       count: 2 },
+  // ...
+];
+```
+
+### 工作流
+
+1. `npm run char:discover` — 跑一遍，生成 `suggested.js`
+2. 打开 `js/character-allowlist-suggested.js`，**review + 编辑**：
+   - 删除"VLM 误识别的非角色"（如"长发女孩"、"风景"等）
+   - 删除 `count < 2` 的（大概率偶发误识）
+   - 在 `aliases` 里加常用别称（搜索体验更好）
+3. 把确认后的数组粘到 `js/config.js` 的 `CONFIG.characters`（替换 `[]`）
+4. `npm run char` 走标准 production 打标
+5. `git add js/character-tags.js && git commit && git push` → Cloudflare Pages 自动部署
+
+### 手填别名覆盖（可选）
+
+如果 VLM 经常把 "德狗" 识别为 "德克萨斯" 但又被归一化错过，你可以在 `tools/.cache/alias-overrides.json` 手填覆盖（首次跑会自动建空文件）：
+
+```json
+{
+  "德狗": "德克萨斯",
+  "星熊": "星熊"
+}
+```
+
+下次跑 discover 时会读取并优先匹配。
+
+### 别名归一化原理
+
+1. 首次跑：拉 prts.wiki Category:干员 的全部分类成员（约 340 条）→ 缓存到 `canonical-names.json`
+2. 对 VLM 返回的 reply：
+   - 完全等于 canonical 名单 → 直接用
+   - 否则用 `normalize()` 做 Unicode NFKC + 大小写折叠 + 去标点，再查表
+3. 命中 → 用 canonical 名；未命中 → 保留原名（让你 review 时合并）
 
 ### 浏览器级手动覆盖
 

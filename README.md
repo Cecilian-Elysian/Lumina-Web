@@ -75,7 +75,11 @@ Lumina-Web/
 │   └── ai/                          # AI 工具(命令行)
 │       ├── build-focal-points.mjs   # 人脸检测 + 批量分析(含 --download-only)
 │       ├── build-character-tags.mjs # MiniMax VLM 批量识别角色 → character-tags.js
-│       └── analyze-images.mjs       # 列出 viewer 当前所有图片 URL
+│       ├── discover-characters.mjs  # 自动生成 allowlist 候选名单(无需预先填 characters)
+│       ├── analyze-images.mjs       # 列出 viewer 当前所有图片 URL
+│       └── lib/
+│           ├── vlm.mjs              # MiniMax VLM 客户端(constrained/open 双模式)
+│           └── aliases.mjs          # prts.wiki 干员清单加载 + 别名归一化
 │
 ├── dist/                            # 构建产物(Git 忽略,仅含 Viewer)
 ├── wrangler.toml                    # Cloudflare Pages 输出目录配置
@@ -95,6 +99,7 @@ Lumina-Web/
 
 ## 日志记录
 
+- 2026-09-09 角色图集增加 discover 工作流：`tools/ai/discover-characters.mjs` 自动扫描图床识别角色，无需预先维护 `CONFIG.characters`；新增 `tools/ai/lib/aliases.mjs`（prts.wiki 干员清单 + 别名归一化）；`vlm.mjs` 新增 `mode='open'` 选项。生成 `js/character-allowlist-suggested.js`（已 .gitignore）作为 review 草稿。
 - 2026-09-08 图集页重构为角色图集：搜索框启用（角色名 / 别名即时过滤）；新增 `js/character-runtime.js` 与 `js/character-tags.js`；新增 `tools/ai/build-character-tags.mjs`（MiniMax VLM 离线批量打标）
 - 2026-09-03 新增图集页（gallery.html）
 - 2026-09-03 顶栏重构 + 品牌色（玫红橙渐变）

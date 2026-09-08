@@ -16,7 +16,10 @@
     "list": "node ai/analyze-images.mjs",
     "char": "node ai/build-character-tags.mjs",
     "char:dry": "node ai/build-character-tags.mjs --dry-run --limit=1",
-    "char:upstream": "node ai/build-character-tags.mjs --source=upstream"
+    "char:upstream": "node ai/build-character-tags.mjs --source=upstream",
+    "char:discover": "node ai/discover-characters.mjs",
+    "char:discover:dry": "node ai/discover-characters.mjs --dry-run --limit=1",
+    "char:discover:full": "node ai/discover-characters.mjs --source=upstream"
   },
   "dependencies": {
     "@vladmandic/face-api": "^4.0.6",
