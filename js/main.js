@@ -66,6 +66,23 @@ function buildHeaders() {
   return headers;
 }
 
+/**
+ * Fisher-Yates 原地洗牌，返回同一引用。
+ * 不想修改原数组请传 arr.slice()。
+ * 用于把图床按时间顺序返回的列表随机化后再分发到轨道，
+ * 避免大图库下各行图片按上传时间机械排列、视觉单调。
+ *
+ * @param {Array} arr 待洗牌的数组
+ * @returns {Array} 同一数组（已乱序）
+ */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 /* ============================================================
  * 模块二：数据加载（图床 API → 兜底图）
  * ============================================================ */
@@ -230,8 +247,12 @@ let gallery = [];
 function renderWall(images) {
   const wall = document.getElementById('wall');
 
-  // 汇总到全局 gallery 供灯箱使用
-  gallery = images;
+  // 一次性洗牌：让各行拿到随机子集、行内顺序也是随机的
+  // 不修改原数组（images 仍按图床返回顺序，便于排查/复用）；
+  // 每次刷新重新洗牌，循环动画里图不会跳来跳去
+  const shuffled = shuffle(images.slice());
+  // 灯箱 ←/→ 跟墙上顺序保持一致
+  gallery = shuffled;
 
   // 移除 index.html 里的"正在加载…"占位提示
   const loading = document.getElementById('loading');
@@ -257,7 +278,7 @@ function renderWall(images) {
     /* ---- 3. 图片分发：按下标取模轮流分到各行 ----
      * 例：8 张图分 2 行 → 第0行拿 0,2,4,6；第1行拿 1,3,5,7
      * 这样每行内容不同，且总量均摊 */
-    const slice = images.filter((_, i) => i % rowCount === r);
+    const slice = shuffled.filter((_, i) => i % rowCount === r);
 
     // 生成本行的卡片 HTML（data-index 记录在全墙 gallery 中的索引，灯箱要用）
     // 卡片小图用缩略图（thumb）加载更快；name 经过转义防 XSS
