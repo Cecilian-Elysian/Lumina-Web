@@ -91,6 +91,52 @@ export async function writeFocalPoints(json) {
 }
 
 /**
+ * 把角色标签 JSON 写回 ../js/character-tags.js(覆盖)。
+ * 写入顺序:对 URL 字典序排序,保证 diff 稳定。
+ * @param {Object} json {[imageUrl]: string|null}
+ */
+export async function writeCharacterTags(json) {
+  const viewerDir = getViewerDir();
+  const header = `/* ============================================================
+ * 角色图集 — 图片-角色映射数据桥
+ * ------------------------------------------------------------
+ * 由 tools/ai/build-character-tags.mjs (MiniMax VLM) 离线产出。
+ * 格式:{ [imageUrl]: "角色名" | null }
+ *   - 角色名必须在 CONFIG.characters.allowlist 中,否则会被前端视为"未分类"
+ *   - null 表示 VLM 判定图中无 allowlist 中的角色
+ *   - 缺失(URL 不在本表中)等价于 null
+ *
+ * 手动覆盖(浏览器级):
+ *   localStorage.setItem('lumina.character.local', JSON.stringify({
+ *     'https://...jpg': '德克萨斯'
+ *   }))
+ * 由 js/character-runtime.js 合并,优先级 localStorage > 本表 > null。
+ * ============================================================ */\n`;
+  const sorted = {};
+  for (const k of Object.keys(json).sort()) sorted[k] = json[k];
+  const body = `window.CHARACTER_TAGS = ${JSON.stringify(sorted, null, 2)};\n`;
+  await fs.writeFile(path.join(viewerDir, 'js', 'character-tags.js'), header + body, 'utf8');
+  return { ok: true, count: Object.keys(sorted).length };
+}
+
+/**
+ * 读取并解析 ../js/character-tags.js,返回 CHARACTER_TAGS 对象。
+ * 文件不存在或解析失败时返回空对象。
+ */
+export async function readCharacterTags() {
+  const viewerDir = getViewerDir();
+  try {
+    const raw = await fs.readFile(path.join(viewerDir, 'js', 'character-tags.js'), 'utf8');
+    const m = raw.match(/(?:window\.)?CHARACTER_TAGS\s*=\s*(\{[\s\S]*?\n\});/);
+    if (!m) return {};
+    return (0, eval)('(' + m[1] + ')');
+  } catch (e) {
+    if (e.code === 'ENOENT') return {};
+    throw e;
+  }
+}
+
+/**
  * 点分路径取值
  */
 export function getByPath(obj, p) {

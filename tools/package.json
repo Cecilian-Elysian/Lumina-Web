@@ -13,7 +13,10 @@
     "ai:max": "node ai/build-focal-points.mjs --strategy=max",
     "ai:center": "node ai/build-focal-points.mjs --strategy=center",
     "download": "node ai/build-focal-points.mjs --download-only",
-    "list": "node ai/analyze-images.mjs"
+    "list": "node ai/analyze-images.mjs",
+    "char": "node ai/build-character-tags.mjs",
+    "char:dry": "node ai/build-character-tags.mjs --dry-run --limit=1",
+    "char:upstream": "node ai/build-character-tags.mjs --source=upstream"
   },
   "dependencies": {
     "@vladmandic/face-api": "^4.0.6",

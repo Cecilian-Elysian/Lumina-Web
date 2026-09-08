@@ -19,6 +19,7 @@ tools/
 │
 └── ai/                          ← ★ AI 工具（命令行）
     ├── build-focal-points.mjs   ← 人脸检测 + 批量分析（含 --download-only）
+    ├── build-character-tags.mjs ← MiniMax VLM 批量识别角色
     └── analyze-images.mjs       ← 列出 viewer 当前所有图片 URL
 ```
 
@@ -123,6 +124,80 @@ npm run download
 | `--source=upstream` | | 数据源：viewer 实际图床 API |
 | `--concurrency=N` | 4 | 并发下载数（1~16） |
 | `--download-only` | | 只下载模型，跳过分析 |
+
+---
+
+## 角色批量打标（MiniMax VLM）
+
+给每张图识别动漫角色，生成 `../js/character-tags.js`，供图集页（gallery.html）按角色聚合。
+
+### 准备
+
+1. 在 viewer 根目录的 `.dev.vars` 里追加：
+   ```
+   MINIMAX_API_KEY=eyxxxxxx...
+   ```
+   或临时用环境变量：`export MINIMAX_API_KEY=...`
+2. 在 `../js/config.js` 的 `CONFIG.characters` 维护允许的角色名单（VLM 只能从中选）：
+   ```js
+   characters: [
+     { name: '德克萨斯', aliases: ['Texas', '德狗'] },
+     { name: '星熊勇仪', aliases: ['Hoshiguma'] },
+     // ...
+   ],
+   ```
+   名单为空时所有图都会被识别为 NONE（输出 `null`）。
+
+### 用法
+
+```bash
+cd tools
+npm install                              # 首次
+
+# 干跑 1 张测试：只下载 + 调 VLM，不写文件
+npm run char:dry
+
+# 正式：对兜底图全量打标（增量；已有结果跳过）
+npm run char
+
+# 从图床 API 拉数据再打标（增量）
+npm run char:upstream
+
+# 调整并发数（默认 3，最大 8）
+node ai/build-character-tags.mjs --concurrency=6
+
+# 只处理前 N 张（测试用）
+node ai/build-character-tags.mjs --limit=10
+
+# 强制重跑全部（忽略缓存）
+node ai/build-character-tags.mjs --force
+```
+
+### 产物
+
+- `tools/.cache/character-tags.json` — 增量缓存（下次运行自动复用）
+- `tools/.cache/character-failed.json` — 失败记录
+- `../js/character-tags.js` — 最终生成的静态文件（commit 进仓库即可生效）
+
+### 工作流
+
+1. 图床新增图片
+2. 本地跑 `npm run char:upstream`（增量处理新 URL）
+3. 检查失败记录、重跑或手动覆盖
+4. `git add js/character-tags.js && git commit && git push` → Cloudflare Pages 自动部署
+
+### 浏览器级手动覆盖
+
+无需打开编辑器，浏览器 Console 一行：
+
+```js
+localStorage.setItem('lumina.character.local', JSON.stringify({
+  'https://bu.dusays.com/2026/08/26/xxxx.png': '德克萨斯'
+}));
+location.reload();
+```
+
+由 `js/character-runtime.js` 合并，优先级 localStorage > 静态文件。仅本浏览器有效。
 
 ---
 

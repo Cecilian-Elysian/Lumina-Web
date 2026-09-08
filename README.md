@@ -51,11 +51,13 @@ Lumina-Web/
 │   └── gallery.css                  # 图集页专用样式(Hero / 网格 / 卡片)
 |
 ├── js/
-│   ├── config.js                    # 配置文件(模式/字段映射/布局/galleries,不含 token)
+│   ├── config.js                    # 配置文件(模式/字段映射/布局/characters/galleries,不含 token)
 │   ├── main.js                      # 主页逻辑:拉取 → 渲染 → 灯箱
-│   ├── gallery.js                   # 图集页逻辑:加载相册 → 渲染网格 → 灯箱
+│   ├── gallery.js                   # 图集页逻辑:角色聚合 → 搜索 → 渲染网格 → 灯箱
 │   ├── focal-points.js              # 焦点数据(由 tools/ 产出)
-│   └── focal-runtime.js             # 焦点运行时消费者
+│   ├── focal-runtime.js             # 焦点运行时消费者
+│   ├── character-tags.js            # 角色打标数据(由 tools/ai/build-character-tags.mjs 产出)
+│   └── character-runtime.js         # 角色标签运行时消费者(LS 覆盖层)
 |
 ├── functions/api/images.js          # Pages Function 代理(服务端注入 token)
 |
@@ -72,6 +74,7 @@ Lumina-Web/
 │   │
 │   └── ai/                          # AI 工具(命令行)
 │       ├── build-focal-points.mjs   # 人脸检测 + 批量分析(含 --download-only)
+│       ├── build-character-tags.mjs # MiniMax VLM 批量识别角色 → character-tags.js
 │       └── analyze-images.mjs       # 列出 viewer 当前所有图片 URL
 │
 ├── dist/                            # 构建产物(Git 忽略,仅含 Viewer)
@@ -86,11 +89,13 @@ Lumina-Web/
 
 - [x] 主页搭建
 - [x] 图集搭建
+- [x] 角色图集（图集页）+ AI 角色识别
 - [ ] 设置搭建
 - [ ] 控制台搭建
 
 ## 日志记录
 
+- 2026-09-08 图集页重构为角色图集：搜索框启用（角色名 / 别名即时过滤）；新增 `js/character-runtime.js` 与 `js/character-tags.js`；新增 `tools/ai/build-character-tags.mjs`（MiniMax VLM 离线批量打标）
 - 2026-09-03 新增图集页（gallery.html）
 - 2026-09-03 顶栏重构 + 品牌色（玫红橙渐变）
 - 2026-09-03 接入真实图床数据
@@ -111,5 +116,6 @@ Lumina-Web/
 - 仓库地址：https://github.com/Cecilian-Elysian/Lumina
 
 - AI 焦点分析：[@vladmandic/face-api](https://github.com/vladmandic/face-api)
+- AI 角色识别：MiniMax VLM（离线批量，密钥在 `.dev.vars` 的 `MINIMAX_API_KEY`）
 
 - 控制台仓库: 还没开始写qwq
