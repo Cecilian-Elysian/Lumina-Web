@@ -19,6 +19,11 @@
  *   GET  /api/proxy-images              → 尝试拉取 viewer 上游图床
  *   POST /api/sync-deploy               → 仅提交并推送 js/focal-points.js
  *   POST /api/run-ai                    → spawn AI 工具,SSE 流式输出
+ *   GET  /api/albums                    → 读 ../js/albums.js
+ *   POST /api/albums                    → 整体覆盖写回
+ *   POST /api/albums/add                → 创建新图集,返回 id
+ *   POST /api/albums/rename             → 重命名图集
+ *   POST /api/albums/delete             → 删除图集(旗下 url 自动降级为未分组)
  *
  * 用法:
  *   node server/serve.mjs               (默认:检查+装依赖+开浏览器)
@@ -40,6 +45,11 @@ import {
   readFocalPoints,
   writeFocalPoints,
   readLocalSecret,
+  readAlbums,
+  writeAlbums,
+  addAlbum,
+  renameAlbum,
+  deleteAlbum,
   getByPath,
 } from './lib/config-reader.mjs';
 
@@ -474,6 +484,85 @@ async function handle(req, res, url) {
     res.on('close', () => {
       if (!res.writableEnded && !child.killed) child.kill('SIGTERM');
     });
+    return;
+  }
+
+  // ── 图集(albums)────────────────────────────
+  if (pathname === '/api/albums' && req.method === 'GET') {
+    try {
+      const data = await readAlbums();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, data }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/albums' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const doc = JSON.parse(body);
+      if (!doc || typeof doc !== 'object' || !Array.isArray(doc._meta)) {
+        throw new Error('body 必须是 { _meta: [...], ... }');
+      }
+      const r = await writeAlbums(doc);
+      log('💾', `写入 albums.js (meta=${r.metaCount}, images=${r.imageCount})`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, ...r }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'JSON 解析失败:' + e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/albums/add' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const { name } = JSON.parse(body);
+      const r = await addAlbum(name);
+      log('➕', `新建图集: ${r.name} (id=${r.id})`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(r));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/albums/rename' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const { id, name } = JSON.parse(body);
+      if (!id) throw new Error('id 必填');
+      if (!name) throw new Error('name 必填');
+      const r = await renameAlbum(id, name);
+      log('✏️ ', `重命名图集: ${id} → ${name}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(r));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/albums/delete' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const { id } = JSON.parse(body);
+      if (!id) throw new Error('id 必填');
+      const r = await deleteAlbum(id);
+      log('🗑️ ', `删除图集: ${id} (旗下 ${r.removedCount} 张图降级为未分组)`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(r));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
     return;
   }
 

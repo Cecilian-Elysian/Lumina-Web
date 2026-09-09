@@ -1,6 +1,6 @@
 # Lumina Tools · 焦点管理器
 
-本地运行的服务与 AI 工具，为 `../js/focal-points.js` 产出焦点数据。
+本地运行的服务与 AI 工具，为 `../js/focal-points.js` 产出焦点数据 + `../js/albums.js` 提供图集管理 API。
 Manager UI 位于项目根目录 `manager/`，整目录被 Git 忽略；Tools 源码正常进入 GitHub，但不会进入 Cloudflare 的 `dist/`。
 
 按职责分目录组织：
@@ -15,16 +15,11 @@ tools/
 ├── server/                      ← ★ 启动器 + HTTP 服务器
 │   ├── serve.mjs                ← 入口（node server/serve.mjs）
 │   └── lib/
-│       └── config-reader.mjs    ← 共享：读取 viewer 的 config.js / focal-points.js
+│       └── config-reader.mjs    ← 共享：读取 viewer 的 config.js / focal-points.js / albums.js
 │
 └── ai/                          ← ★ AI 工具（命令行）
     ├── build-focal-points.mjs   ← 人脸检测 + 批量分析（含 --download-only）
-    ├── build-character-tags.mjs ← MiniMax VLM 批量识别角色（constrained 模式）
-    ├── discover-characters.mjs  ← 自动生成 allowlist 候选名单（open 模式）
-    ├── analyze-images.mjs       ← 列出 viewer 当前所有图片 URL
-    └── lib/
-        ├── vlm.mjs              ← MiniMax VLM 客户端（constrained/open 双模式）
-        └── aliases.mjs          ← prts.wiki 干员清单加载 + 别名归一化
+    └── analyze-images.mjs       ← 列出 viewer 当前所有图片 URL
 ```
 
 ---
@@ -66,6 +61,10 @@ node server/serve.mjs --no-install   # 跳过依赖检查
 
 ## 可视化编辑器使用
 
+Manager 有两个 tab：
+
+### 📍 焦点 tab
+
 | 按钮 | 作用 |
 |---|---|
 | **↻ 读取图片列表** | 通过本地代理拉真实图床；失败时加载 viewer 兜底图 |
@@ -74,7 +73,7 @@ node server/serve.mjs --no-install   # 跳过依赖检查
 | **↥ 同步并部署** | 仅提交并推送 `js/focal-points.js` 到 `origin/main`，触发 Cloudflare Pages 部署 |
 | **📋 导出 JSON** | 不写入，只导出 JSON 文本（用于复制粘贴） |
 
-### 单图编辑
+#### 单图编辑
 
 1. 点击网格中任意图片 → 弹出编辑器
 2. **点击图片任意位置** 或 **拖动白点** 设置焦点
@@ -84,6 +83,29 @@ node server/serve.mjs --no-install   # 跳过依赖检查
 
 > 编辑结果保存在浏览器 `localStorage.lumina.focal.local`，
 > 只在本浏览器有效，**点"💾 保存到 viewer"才会写入文件并 git 可见**。
+
+### 📚 图集 tab
+
+| 按钮 / 交互 | 作用 |
+|---|---|
+| **＋ 新建图集** | 输入名字 + 随机 8 字符 id |
+| **图集 chip** 上的 ✏️ | 重命名该图集 |
+| **图集 chip** 上的 🗑 | 删除图集（旗下 url 自动降级为未分组） |
+| **🚮 未分组 chip** | 拖到此 = 解除归属 |
+| **拖图片 → 图集** | 把图片加入图集 |
+| **💾 保存到 viewer** | 把改动写入 `../js/albums.js` |
+| **↥ 同步并部署** | 仅提交并推送 `js/albums.js` 到 `origin/main` |
+
+#### 工作流
+
+1. 点 **＋ 新建图集** → 输入"德克萨斯" → 创建
+2. 从图片网格拖图到该 chip → 数字 +1
+3. 拖错/不想保留 → 拖到 🚮 解除
+4. 点 **💾 保存到 viewer** → 写入 `js/albums.js`
+5. `git add js/albums.js && git commit && git push` 触发部署
+
+> 编辑结果保存在 `localStorage.lumina.album.local`，仅本浏览器有效。
+> 手动覆盖：`localStorage.setItem('lumina.album.local', JSON.stringify({ url: 'albumId' }))`，刷新即生效。
 
 ---
 
@@ -131,163 +153,6 @@ npm run download
 
 ---
 
-## 角色批量打标（MiniMax VLM）
-
-给每张图识别动漫角色，生成 `../js/character-tags.js`，供图集页（gallery.html）按角色聚合。
-
-### 准备
-
-1. 在 viewer 根目录的 `.dev.vars` 里追加：
-   ```
-   MINIMAX_API_KEY=eyxxxxxx...
-   ```
-   或临时用环境变量：`export MINIMAX_API_KEY=...`
-2. 在 `../js/config.js` 的 `CONFIG.characters` 维护允许的角色名单（VLM 只能从中选）：
-   ```js
-   characters: [
-     { name: '德克萨斯', aliases: ['Texas', '德狗'] },
-     { name: '星熊勇仪', aliases: ['Hoshiguma'] },
-     // ...
-   ],
-   ```
-   名单为空时所有图都会被识别为 NONE（输出 `null`）。
-
-### 用法
-
-```bash
-cd tools
-npm install                              # 首次
-
-# 干跑 1 张测试：只下载 + 调 VLM，不写文件
-npm run char:dry
-
-# 正式：对兜底图全量打标（增量；已有结果跳过）
-npm run char
-
-# 从图床 API 拉数据再打标（增量）
-npm run char:upstream
-
-# 调整并发数（默认 3，最大 8）
-node ai/build-character-tags.mjs --concurrency=6
-
-# 只处理前 N 张（测试用）
-node ai/build-character-tags.mjs --limit=10
-
-# 强制重跑全部（忽略缓存）
-node ai/build-character-tags.mjs --force
-```
-
-### 产物
-
-- `tools/.cache/character-tags.json` — 增量缓存（下次运行自动复用）
-- `tools/.cache/character-failed.json` — 失败记录
-- `../js/character-tags.js` — 最终生成的静态文件（commit 进仓库即可生效）
-
-### 工作流
-
-1. 图床新增图片
-2. 本地跑 `npm run char:upstream`（增量处理新 URL）
-3. 检查失败记录、重跑或手动覆盖
-4. `git add js/character-tags.js && git commit && git push` → Cloudflare Pages 自动部署
-
----
-
-## 角色发现（自动生成 allowlist 候选）
-
-`build-character-tags.mjs` 需要你事先在 `CONFIG.characters` 维护允许名单。如果你**不知道图床里到底有哪些角色**，可以用 `discover-characters.mjs` 自动扫描一遍，让 VLM 告诉你"这堆图里有谁"，你再 review 后填进 `characters`。
-
-### 准备
-
-同 `npm run char` —— 在 viewer 根目录 `.dev.vars` 写好 `MINIMAX_API_KEY` 即可。
-
-### 用法
-
-```bash
-cd tools
-
-# 干跑 1 张：只下载 + 解析，不调 VLM、不写文件
-npm run char:discover:dry
-
-# 全量发现（fallbackImages 默认 16 张，约 ¥0.02 token）
-npm run char:discover
-
-# 从真实图床拉数据再发现
-npm run char:discover:full
-
-# 关闭 prts.wiki 别名归一化（默认开）
-node ai/discover-characters.mjs --no-canonicalize
-
-# 强制重跑（忽略已有缓存）
-node ai/discover-characters.mjs --force
-
-# 调整并发 / 限制
-node ai/discover-characters.mjs --concurrency=6 --limit=20
-```
-
-### 产物
-
-- `tools/.cache/canonical-names.json` — prts.wiki 官方干员清单（含异格、变体），首次拉取后缓存
-- `tools/.cache/discovered-names.json` — 本次发现的原始聚合（{ url: { reply, canonical, status } }）
-- `tools/.cache/discovered-failed.json` — 失败记录
-- **`../js/character-allowlist-suggested.js`** — 给前端预览用的候选名单（已被 `.gitignore` 忽略，**不会进 GitHub**）
-
-`suggested.js` 的结构：
-
-```js
-window.CHARACTER_ALLOWLIST_SUGGESTED = [
-  { name: '德克萨斯', aliases: ['Texas', '德狗'], count: 5 },
-  { name: '阿米娅',   aliases: ['Amiya'],       count: 2 },
-  // ...
-];
-```
-
-### 工作流
-
-1. `npm run char:discover` — 跑一遍，生成 `suggested.js`
-2. 打开 `js/character-allowlist-suggested.js`，**review + 编辑**：
-   - 删除"VLM 误识别的非角色"（如"长发女孩"、"风景"等）
-   - 删除 `count < 2` 的（大概率偶发误识）
-   - 在 `aliases` 里加常用别称（搜索体验更好）
-3. 把确认后的数组粘到 `js/config.js` 的 `CONFIG.characters`（替换 `[]`）
-4. `npm run char` 走标准 production 打标
-5. `git add js/character-tags.js && git commit && git push` → Cloudflare Pages 自动部署
-
-### 手填别名覆盖（可选）
-
-如果 VLM 经常把 "德狗" 识别为 "德克萨斯" 但又被归一化错过，你可以在 `tools/.cache/alias-overrides.json` 手填覆盖（首次跑会自动建空文件）：
-
-```json
-{
-  "德狗": "德克萨斯",
-  "星熊": "星熊"
-}
-```
-
-下次跑 discover 时会读取并优先匹配。
-
-### 别名归一化原理
-
-1. 首次跑：拉 prts.wiki Category:干员 的全部分类成员（约 340 条）→ 缓存到 `canonical-names.json`
-2. 对 VLM 返回的 reply：
-   - 完全等于 canonical 名单 → 直接用
-   - 否则用 `normalize()` 做 Unicode NFKC + 大小写折叠 + 去标点，再查表
-3. 命中 → 用 canonical 名；未命中 → 保留原名（让你 review 时合并）
-
-### 浏览器级手动覆盖
-
-无需打开编辑器，浏览器 Console 一行：
-
-```js
-localStorage.setItem('lumina.character.local', JSON.stringify({
-  'https://bu.dusays.com/2026/08/26/xxxx.png': '德克萨斯'
-}));
-location.reload();
-```
-
-由 `js/character-runtime.js` 合并，优先级 localStorage > 静态文件。仅本浏览器有效。
-
----
-
 ## 辅助命令
 
 ```bash
@@ -311,6 +176,11 @@ node ai/analyze-images.mjs --json
 | GET | `/api/viewer-config` | 读取 `../../js/config.js` |
 | GET | `/api/focal-points` | 读取 `../js/focal-points.js` |
 | POST | `/api/focal-points` | 写入 `../js/focal-points.js`（body=JSON） |
+| GET | `/api/albums` | 读取 `../js/albums.js` |
+| POST | `/api/albums` | 整体覆盖写回 `../js/albums.js`（body={_meta, ...url→id}） |
+| POST | `/api/albums/add` | body=`{name}` → 创建新图集，返回 `{id, name}` |
+| POST | `/api/albums/rename` | body=`{id, name}` → 重命名 |
+| POST | `/api/albums/delete` | body=`{id}` → 删除图集，旗下 url 自动降级为未分组 |
 | GET | `/api/proxy-images` | 尝试从 viewer 上游图床拉取真实数据(自动分页合并,单页 40 张硬上限被代理吸收) |
 | POST | `/api/sync-deploy` | 仅提交并推送 `js/focal-points.js` 到 `origin/main` |
 | POST | `/api/run-ai` | spawn AI 工具，SSE 流式返回日志 |
@@ -333,7 +203,7 @@ A：检查网络，首次需要从 GitHub 下载模型。
 A：必须点 "💾 保存到 viewer"，否则只存在 localStorage。
 
 **Q：AI 检测不到某些人脸？**
-A：提高图片清晰度，或手动用编辑器微调。
+A：提高图片清晰度，或手动用编辑器加图集拖拽按钮。
 
 **Q：Node.js 版本不够？**
 A：需要 ≥18，前往 https://nodejs.org 下载新版。

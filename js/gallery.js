@@ -1,16 +1,16 @@
 /* ============================================================
  * 光影画廊 (gallery.html) — 主逻辑
  * ------------------------------------------------------------
- * 角色图集模式:
+ * 图集模式:
  *   1. loadImages()      拉取图片列表(图床 API → 兜底图)
- *   2. buildAlbums()     按 CONFIG.characters + CHARACTER_TAGS 聚合角色相册
- *                        未识别图归入末尾"未分类"
+ *   2. buildAlbums()     按 ALBUMS._meta + url 映射聚合图集
+ *                        未分配 url 归入末尾"未分组"
  *   3. renderGalleries() 渲染网格
- *   4. initSearch()      启用搜索框(name + aliases 大小写不敏感匹配)
+ *   4. initSearch()      启用搜索框(图集名大小写不敏感匹配)
  *   5. initLightbox()    复用灯箱(点击卡片打开相册内图片)
  *
- * 依赖:js/character-runtime.js 需先于本文件加载(暴露 CharacterRuntime)
- *      js/config.js 提供 CONFIG.characters 允许表
+ * 依赖:js/album-runtime.js 需先于本文件加载(暴露 AlbumRuntime)
+ *      js/albums.js 提供 window.ALBUMS
  * ============================================================ */
 
 (function () {
@@ -88,38 +88,43 @@
   }
 
   // ───────────────────────────────────────────────
-  // 角色聚合
+  // 图集聚合
   // ───────────────────────────────────────────────
 
-  function buildAlbums(images, tagOf, allowlist) {
-    const allowNames = new Set(allowlist.map((c) => c.name));
+  function buildAlbums(images) {
+    const runtime = window.AlbumRuntime;
+    if (!runtime) return [];
+
+    const meta = runtime.getMeta();
     const albums = [];
 
-    for (const c of allowlist) {
-      const imgs = images.filter((it) => tagOf(it.url) === c.name);
+    for (const a of meta) {
+      const urls = runtime.getImagesOf(a.id);
+      // 仅保留本次拉取到的 url(过滤掉图床已下架的旧记录)
+      const imgs = images.filter((it) => urls.indexOf(it.url) >= 0);
       if (imgs.length === 0) continue;
       albums.push({
-        name: c.name,
-        aliases: c.aliases || [],
+        id: a.id,
+        name: a.name,
         cover: imgs[0].url,
         images: imgs.map((it) => it.url),
         count: imgs.length,
       });
     }
 
-    // 未分类:tag 不在 allowlist 里(包含 null / VLM 给出 allowlist 外的名字)
-    const uncategorized = images.filter((it) => {
-      const t = tagOf(it.url);
-      return !t || !allowNames.has(t);
-    });
-    if (uncategorized.length > 0) {
+    // 未分组:本批拉到的图,但 ALBUMS 没分配的
+    const allUrls = images.map((it) => it.url);
+    const assigned = new Set();
+    for (const a of albums) for (const u of a.images) assigned.add(u);
+    const unassigned = images.filter((it) => !assigned.has(it.url));
+    if (unassigned.length > 0) {
       albums.push({
-        name: '未分类',
-        aliases: [],
-        cover: uncategorized[0].url,
-        images: uncategorized.map((it) => it.url),
-        count: uncategorized.length,
-        uncategorized: true,
+        id: '',
+        name: '未分组',
+        cover: unassigned[0].url,
+        images: unassigned.map((it) => it.url),
+        count: unassigned.length,
+        unassigned: true,
       });
     }
 
@@ -129,18 +134,19 @@
   function buildLegacyAlbums() {
     if (!Array.isArray(CONFIG.galleries) || CONFIG.galleries.length === 0) return [];
     return CONFIG.galleries.map((g) => ({
+      id: '',
       name: g.title,
-      aliases: [],
       cover: g.cover,
       images: (g.images && g.images.length > 0) ? g.images : [g.cover],
       count: (g.images && g.images.length > 0) ? g.images.length : 1,
       date: g.date || '',
       description: g.description || '',
+      legacy: true,
     }));
   }
 
   function albumSearchText(album) {
-    return [album.name, ...(album.aliases || [])].join(' ').toLowerCase();
+    return (album.name || '').toLowerCase();
   }
 
   // ───────────────────────────────────────────────
@@ -164,7 +170,7 @@
     if (empty) empty.classList.add('hidden');
 
     grid.innerHTML = albums.map((album, i) => (
-      '<article class="gallery-card' + (album.uncategorized ? ' is-uncategorized' : '') +
+      '<article class="gallery-card' + (album.unassigned ? ' is-uncategorized' : '') +
         '" data-index="' + i + '" tabindex="0">' +
         '<img src="' + escapeHtml(album.cover) + '"' +
           ' alt="' + escapeHtml(album.name) + '"' +
@@ -181,7 +187,7 @@
     const el = document.getElementById('result-count');
     if (!el) return;
     if (!query || !query.trim()) {
-      el.textContent = total > 0 ? '共 ' + total + ' 个角色' : '';
+      el.textContent = total > 0 ? '共 ' + total + ' 个图集' : '';
     } else {
       el.textContent = '匹配 ' + shown + ' / ' + total;
     }
@@ -300,18 +306,10 @@
   // ───────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', async () => {
-    const allowlist = (CONFIG.characters || []).filter((c) => c && c.name);
-    const tagOf = (url) => {
-      if (window.CharacterRuntime && typeof window.CharacterRuntime.tagOf === 'function') {
-        return window.CharacterRuntime.tagOf(url);
-      }
-      return null;
-    };
-
     const images = await loadImages();
-    let albums = buildAlbums(images, tagOf, allowlist);
+    let albums = buildAlbums(images);
 
-    // 兜底:若角色模式一条都没聚合出,且 CONFIG.galleries 有数据 → 用旧版相册
+    // 兜底:若图集模式一条都没聚合出,且 CONFIG.galleries 有数据 → 用旧版相册
     if (albums.length === 0) {
       albums = buildLegacyAlbums();
     }

@@ -39,12 +39,12 @@
       <p class="hero-subtitle">定格时间，封存每一次心跳</p>
     </div>
     <div class="hero-search-wrap">
-      <label class="hero-search" aria-label="搜索角色">
+      <label class="hero-search" aria-label="搜索图集">
         <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
           <line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        <input type="text" id="search-input" class="search-input" placeholder="搜索角色名…" autocomplete="off">
+        <input type="text" id="search-input" class="search-input" placeholder="搜索图集名…" autocomplete="off">
       </label>
       <span id="result-count" class="result-count"></span>
     </div>
@@ -73,9 +73,9 @@
 
   <!-- 统一导航栏注入（defer 保证在 DOM 就绪后执行） -->
   <script src="js/navbar.js" defer></script>
-  <!-- 脚本：character-tags → character-runtime → config → gallery（依赖顺序不可换） -->
-  <script src="js/character-tags.js"></script>
-  <script src="js/character-runtime.js"></script>
+  <!-- 脚本：albums → album-runtime → config → gallery（依赖顺序不可换） -->
+  <script src="js/albums.js"></script>
+  <script src="js/album-runtime.js"></script>
   <script src="js/config.js"></script>
   <script src="js/gallery.js"></script>
 </body>

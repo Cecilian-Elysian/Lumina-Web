@@ -90,50 +90,142 @@ export async function writeFocalPoints(json) {
   return { ok: true, count: Object.keys(json).length };
 }
 
-/**
- * 把角色标签 JSON 写回 ../js/character-tags.js(覆盖)。
- * 写入顺序:对 URL 字典序排序,保证 diff 稳定。
- * @param {Object} json {[imageUrl]: string|null}
- */
-export async function writeCharacterTags(json) {
-  const viewerDir = getViewerDir();
-  const header = `/* ============================================================
- * 角色图集 — 图片-角色映射数据桥
+/* ============================================================
+ * 图集(albums)读写
  * ------------------------------------------------------------
- * 由 tools/ai/build-character-tags.mjs (MiniMax VLM) 离线产出。
- * 格式:{ [imageUrl]: "角色名" | null }
- *   - 角色名必须在 CONFIG.characters.allowlist 中,否则会被前端视为"未分类"
- *   - null 表示 VLM 判定图中无 allowlist 中的角色
- *   - 缺失(URL 不在本表中)等价于 null
+ * 文件:../js/albums.js
+ * 格式:
+ *   window.ALBUMS = {
+ *     _meta: [ { id: "abc123", name: "德克萨斯" }, ... ],
+ *     "https://.../a.jpg": "abc123",  // url → album id
+ *     "https://.../b.jpg": "def456"
+ *   };
  *
- * 手动覆盖(浏览器级):
- *   localStorage.setItem('lumina.character.local', JSON.stringify({
- *     'https://...jpg': '德克萨斯'
+ * 规则:
+ *   - 一个 url 至多一个 album id;无 id = 未分组
+ *   - _meta 数组顺序 = 图集显示/渲染顺序
+ *   - 删除图集时,旗下 url 自动降级为未分组(仅清掉映射)
+ * ============================================================ */
+
+const ALBUMS_HEADER = `/* ============================================================
+ * 图集(手动分类)— 图片-图集映射数据桥
+ * ------------------------------------------------------------
+ * 由本地 manager/ 可视化编辑器(拖拽)离线产出。
+ * 格式:
+ *   window.ALBUMS = {
+ *     _meta: [ { id: "abc123", name: "德克萨斯" }, ... ],
+ *     "https://.../a.jpg": "abc123",   // url → album id
+ *     "https://.../b.jpg": "def456"
+ *   };
+ *
+ * 规则:
+ *   - 一个 url 至多一个 album id;未出现的 url = 未分组
+ *   - _meta 数组顺序决定图集显示顺序
+ *   - 删除图集时该 id 的所有 url 映射自动移除(降级为未分组)
+ *
+ * 浏览器侧(可在 DevTools 临时覆盖):
+ *   localStorage.setItem('lumina.album.local', JSON.stringify({
+ *     'https://...jpg': 'abc123'
  *   }))
- * 由 js/character-runtime.js 合并,优先级 localStorage > 本表 > null。
  * ============================================================ */\n`;
-  const sorted = {};
-  for (const k of Object.keys(json).sort()) sorted[k] = json[k];
-  const body = `window.CHARACTER_TAGS = ${JSON.stringify(sorted, null, 2)};\n`;
-  await fs.writeFile(path.join(viewerDir, 'js', 'character-tags.js'), header + body, 'utf8');
-  return { ok: true, count: Object.keys(sorted).length };
+
+/**
+ * 读取 ../js/albums.js。文件不存在返回空结构。
+ * @returns {Promise<{_meta:Array<{id:string,name:string}>, [url:string]:string}>}
+ */
+export async function readAlbums() {
+  const viewerDir = getViewerDir();
+  try {
+    const raw = await fs.readFile(path.join(viewerDir, 'js', 'albums.js'), 'utf8');
+    // 跳过 /* ... */ 注释,匹配第一个真正的赋值
+    const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+    const m = stripped.match(/(?:^|\n)\s*(?:window\.)?ALBUMS\s*=\s*(\{[\s\S]*?\n\});/);
+    if (!m) return { _meta: [] };
+    return (0, eval)('(' + m[1] + ')');
+  } catch (e) {
+    if (e.code === 'ENOENT') return { _meta: [] };
+    throw e;
+  }
 }
 
 /**
- * 读取并解析 ../js/character-tags.js,返回 CHARACTER_TAGS 对象。
- * 文件不存在或解析失败时返回空对象。
+ * 把完整 albums 对象写回 ../js/albums.js(覆盖)。
+ * 写入顺序:_meta 数组保持;url 映射按 url 字典序排序(diff 稳定)。
+ * @param {{_meta:Array,_images?:Object}} doc
  */
-export async function readCharacterTags() {
+export async function writeAlbums(doc) {
   const viewerDir = getViewerDir();
-  try {
-    const raw = await fs.readFile(path.join(viewerDir, 'js', 'character-tags.js'), 'utf8');
-    const m = raw.match(/(?:window\.)?CHARACTER_TAGS\s*=\s*(\{[\s\S]*?\n\});/);
-    if (!m) return {};
-    return (0, eval)('(' + m[1] + ')');
-  } catch (e) {
-    if (e.code === 'ENOENT') return {};
-    throw e;
+  const meta = Array.isArray(doc._meta) ? doc._meta.filter((a) => a && a.id && a.name) : [];
+  const metaIds = new Set(meta.map((a) => a.id));
+
+  // 收集映射;剔除指向不存在图集的 id
+  const map = {};
+  for (const [k, v] of Object.entries(doc)) {
+    if (k === '_meta') continue;
+    if (typeof v === 'string' && metaIds.has(v)) map[k] = v;
   }
+  // url 字典序排序
+  const sortedMap = {};
+  for (const k of Object.keys(map).sort()) sortedMap[k] = map[k];
+
+  const out = { _meta: meta, ...sortedMap };
+  const body = `window.ALBUMS = ${JSON.stringify(out, null, 2)};\n`;
+  await fs.writeFile(path.join(viewerDir, 'js', 'albums.js'), ALBUMS_HEADER + body, 'utf8');
+  return { ok: true, metaCount: meta.length, imageCount: Object.keys(sortedMap).length };
+}
+
+/**
+ * 创建一个新图集。name 必填,id 自动生成(随机 8 字符 hex)。
+ * @returns {Promise<{id:string,name:string,ok:boolean}>}
+ */
+export async function addAlbum(name) {
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw new Error('name 必填');
+  }
+  const doc = await readAlbums();
+  const id = (() => {
+    let s;
+    do {
+      s = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0').slice(0, 8);
+    } while (doc._meta.some((a) => a.id === s));
+    return s;
+  })();
+  doc._meta.push({ id, name: name.trim() });
+  await writeAlbums(doc);
+  return { id, name: name.trim(), ok: true };
+}
+
+/**
+ * 重命名一个图集。
+ * @returns {Promise<{ok:boolean,name:string}>}
+ */
+export async function renameAlbum(id, name) {
+  if (!id || !name || !name.trim()) throw new Error('id 和 name 都必填');
+  const doc = await readAlbums();
+  const a = doc._meta.find((x) => x.id === id);
+  if (!a) throw new Error('图集 id 不存在: ' + id);
+  a.name = name.trim();
+  await writeAlbums(doc);
+  return { ok: true, name: a.name };
+}
+
+/**
+ * 删除一个图集。其下所有 url 映射自动清除(降级为未分组)。
+ * @returns {Promise<{ok:boolean,removedCount:number}>}
+ */
+export async function deleteAlbum(id) {
+  if (!id) throw new Error('id 必填');
+  const doc = await readAlbums();
+  const before = doc._meta.length;
+  doc._meta = doc._meta.filter((a) => a.id !== id);
+  if (doc._meta.length === before) throw new Error('图集 id 不存在: ' + id);
+  let removedCount = 0;
+  for (const k of Object.keys(doc)) {
+    if (k === '_meta') continue;
+    if (doc[k] === id) { delete doc[k]; removedCount++; }
+  }
+  await writeAlbums(doc);
+  return { ok: true, removedCount };
 }
 
 /**

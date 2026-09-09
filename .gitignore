@@ -25,9 +25,6 @@ node_modules/
 # Manager 控制台仅保存在本机，不上传 GitHub
 /manager/
 
-# Discover 工具生成的 allowlist 候选文件（review 后手动粘到 CONFIG.characters）
-/js/character-allowlist-suggested.js
-
 # Tools 运行产物（Tools 源码和依赖锁文件正常入库）
 tools/node_modules/
 tools/weights/

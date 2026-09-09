@@ -13,13 +13,7 @@
     "ai:max": "node ai/build-focal-points.mjs --strategy=max",
     "ai:center": "node ai/build-focal-points.mjs --strategy=center",
     "download": "node ai/build-focal-points.mjs --download-only",
-    "list": "node ai/analyze-images.mjs",
-    "char": "node ai/build-character-tags.mjs",
-    "char:dry": "node ai/build-character-tags.mjs --dry-run --limit=1",
-    "char:upstream": "node ai/build-character-tags.mjs --source=upstream",
-    "char:discover": "node ai/discover-characters.mjs",
-    "char:discover:dry": "node ai/discover-characters.mjs --dry-run --limit=1",
-    "char:discover:full": "node ai/discover-characters.mjs --source=upstream"
+    "list": "node ai/analyze-images.mjs"
   },
   "dependencies": {
     "@vladmandic/face-api": "^4.0.6",
