@@ -311,7 +311,7 @@ node ai/analyze-images.mjs --json
 | GET | `/api/viewer-config` | 读取 `../../js/config.js` |
 | GET | `/api/focal-points` | 读取 `../js/focal-points.js` |
 | POST | `/api/focal-points` | 写入 `../js/focal-points.js`（body=JSON） |
-| GET | `/api/proxy-images` | 尝试从 viewer 上游图床拉取真实数据 |
+| GET | `/api/proxy-images` | 尝试从 viewer 上游图床拉取真实数据(自动分页合并,单页 40 张硬上限被代理吸收) |
 | POST | `/api/sync-deploy` | 仅提交并推送 `js/focal-points.js` 到 `origin/main` |
 | POST | `/api/run-ai` | spawn AI 工具，SSE 流式返回日志 |
 

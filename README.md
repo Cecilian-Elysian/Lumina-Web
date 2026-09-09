@@ -99,6 +99,7 @@ Lumina-Web/
 
 ## 日志记录
 
+- 2026-09-09 图床分页自动合并：7bu.top 单页硬上限 40 张（total=59 / last_page=2），代理层并发拉全部页后合并返回。`tools/server/serve.mjs` 的 `fetchUpstreamImages()` 与 `functions/api/images.js` 的 `onRequest` 均改造，前端 `perPage=100` 现在能拿到全部 59 张，前端零修改。
 - 2026-09-09 角色图集增加 discover 工作流：`tools/ai/discover-characters.mjs` 自动扫描图床识别角色，无需预先维护 `CONFIG.characters`；新增 `tools/ai/lib/aliases.mjs`（prts.wiki 干员清单 + 别名归一化）；`vlm.mjs` 新增 `mode='open'` 选项。生成 `js/character-allowlist-suggested.js`（已 .gitignore）作为 review 草稿。
 - 2026-09-08 图集页重构为角色图集：搜索框启用（角色名 / 别名即时过滤）；新增 `js/character-runtime.js` 与 `js/character-tags.js`；新增 `tools/ai/build-character-tags.mjs`（MiniMax VLM 离线批量打标）
 - 2026-09-03 新增图集页（gallery.html）

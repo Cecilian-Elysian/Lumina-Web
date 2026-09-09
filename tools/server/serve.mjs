@@ -171,6 +171,32 @@ async function serveStatic(req, res, relPath) {
 }
 
 // ── 代理 viewer 上游图床 ─────────────────────────
+// 单页 GET,带鉴权头,超时 10s。返回原始 JSON。
+function getUpstreamPage(url, headers, page, perPage) {
+  const u = new URL(url);
+  u.searchParams.set('page', String(page));
+  u.searchParams.set('per_page', String(perPage));
+  return new Promise((resolve, reject) => {
+    const req = https.get(u.toString(), { headers, timeout: 10000 }, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        reject(new Error('HTTP ' + res.statusCode));
+        res.resume(); return;
+      }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+        catch (e) { reject(new Error('JSON 解析失败(page=' + page + '): ' + e.message)); }
+      });
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout(page=' + page + ')')));
+  });
+}
+
+// 7bu.top 等图床单页最多 40 张。本函数自动并发拉全部页,合并 data.data[],
+// 一次性返回所有图。失败时降级返回已拿到的页(可能不完整,但不抛错)。
 async function fetchUpstreamImages(perPage) {
   try {
     const CONFIG = await readViewerConfig();
@@ -179,8 +205,6 @@ async function fetchUpstreamImages(perPage) {
     const token = CONFIG.token || await readLocalSecret('QUBU_TOKEN');
     if (CONFIG.authType !== 'none' && !token) return null;
 
-    const url = CONFIG.apiBase + CONFIG.listPath +
-                '?order=newest&per_page=' + (perPage || CONFIG.perPage || 60);
     const headers = { Accept: 'application/json' };
     if (token && CONFIG.authType === 'bearer') {
       headers.Authorization = 'Bearer ' + token;
@@ -188,23 +212,63 @@ async function fetchUpstreamImages(perPage) {
       headers[CONFIG.authKey] = CONFIG.tokenPrefix + token;
     }
 
-    return await new Promise((resolve, reject) => {
-      const req = https.get(url, { headers, timeout: 10000 }, (res) => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error('HTTP ' + res.statusCode));
-          res.resume(); return;
+    const baseUrl = CONFIG.apiBase + CONFIG.listPath + '?order=newest';
+    const requestPerPage = Math.min(40, perPage || CONFIG.perPage || 60);
+
+    // 第 1 页:必拉,用来探测 last_page / total
+    const first = await getUpstreamPage(baseUrl, headers, 1, requestPerPage);
+    const innerData = (first && first.data) || {};
+    const items = Array.isArray(innerData.data) ? innerData.data.slice() : [];
+    const total = Number(innerData.total) || items.length;
+    const lastPage = Number(innerData.last_page) || 1;
+
+    // 单页就能装下 → 包装成图床原始三段式返回
+    if (lastPage <= 1) {
+      return wrapUpstream(items, innerData);
+    }
+
+    // 多页:并发拉剩余页 (page=2..lastPage)
+    const pages = [];
+    for (let p = 2; p <= lastPage; p++) pages.push(p);
+    const settled = await Promise.allSettled(
+      pages.map((p) => getUpstreamPage(baseUrl, headers, p, requestPerPage))
+    );
+
+    let okCount = 0;
+    settled.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        const moreItems = r.value && r.value.data && r.value.data.data;
+        if (Array.isArray(moreItems)) {
+          items.push(...moreItems);
+          okCount++;
         }
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))));
-        res.on('error', reject);
-      });
-      req.on('error', reject);
-      req.on('timeout', () => req.destroy(new Error('timeout')));
+      } else {
+        log('⚠️ ', `分页 page=${pages[i]} 拉取失败: ${r.reason && r.reason.message || r.reason}`);
+      }
     });
+
+    log('📄', `图床分页合并:共 ${total} 张 / ${lastPage} 页,成功 ${okCount + 1}/${lastPage},返回 ${items.length} 张`);
+    return wrapUpstream(items, innerData);
   } catch (e) {
+    log('❌', `fetchUpstreamImages 失败: ${e.message}`);
     return null;
   }
+}
+
+// 包装成图床原始三段式: {status, message, data: {data: items, current_page, last_page, total}}
+// 保留 innerData 中的其他字段(如有),仅覆盖 data 数组相关字段。
+function wrapUpstream(items, innerData) {
+  return {
+    status: true,
+    message: 'success',
+    data: Object.assign({}, innerData, {
+      data: items,
+      current_page: 1,
+      last_page: 1,
+      total: items.length,
+      per_page: items.length,
+    }),
+  };
 }
 
 function readBody(req) {

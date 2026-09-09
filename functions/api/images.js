@@ -19,7 +19,14 @@
  * 本地开发（wrangler pages dev）：
  *   在项目根目录建 .dev.vars 文件写入 QUBU_TOKEN=xxx
  *   （.dev.vars 已加入 .gitignore，绝不会被提交）
+ *
+ * 分页合并：
+ *   7bu.top 图床单页最多 40 张。本函数自动并发拉全部页（page=1..last_page），
+ *   合并 data.data[] 数组后透传给浏览器，前端无需分页处理。
  * ============================================================ */
+
+const UPSTREAM_BASE = 'https://7bu.top/api/v1/images';
+const PER_PAGE_HARD_MAX = 40; // 图床单页硬上限,超过会被截断
 
 // Pages Functions 约定导出：onRequest 处理所有方法的请求
 export async function onRequest(context) {
@@ -41,30 +48,62 @@ export async function onRequest(context) {
    * 只透传安全的查询参数（per_page / order），
    * 防止调用者通过代理滥用图床的其他接口参数 */
   const perPage = clampInt(new URL(request.url).searchParams.get('per_page'), 1, 100, 60);
+  // 图床硬上限 40,即使 caller 要 100,内部每次最多请求 40
+  const requestPerPage = Math.min(PER_PAGE_HARD_MAX, perPage);
 
-  const upstreamUrl = new URL('https://7bu.top/api/v1/images');
-  upstreamUrl.searchParams.set('order', 'newest');
-  upstreamUrl.searchParams.set('per_page', String(perPage));
+  const upstreamHeaders = {
+    Accept: 'application/json',
+    // ★ 安全关键：token 只在这里注入（服务端），前端永远看不到
+    Authorization: 'Bearer ' + token,
+  };
 
   try {
-    const upstream = await fetch(upstreamUrl, {
-      headers: {
-        Accept: 'application/json',
-        // ★ 安全关键：token 只在这里注入（服务端），前端永远看不到
-        Authorization: 'Bearer ' + token,
-      },
-    });
+    // 第 1 页:探测 last_page / total
+    const firstPage = 1;
+    const firstUrl = new URL(UPSTREAM_BASE);
+    firstUrl.searchParams.set('order', 'newest');
+    firstUrl.searchParams.set('per_page', String(requestPerPage));
+    firstUrl.searchParams.set('page', String(firstPage));
 
-    // 把上游响应体原样透传给浏览器（流式转发，不额外占内存）
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        // 列表每次加载都取最新：新增图片刷新即可见
-        // （个人小站访问量低，远低于图床 180 次/分钟限流）
-        'Cache-Control': 'public, no-cache',
-      },
-    });
+    const firstRes = await fetch(firstUrl, { headers: upstreamHeaders });
+    if (!firstRes.ok) {
+      // 透传 4xx/5xx 状态码,便于排查
+      return new Response(firstRes.body, {
+        status: firstRes.status,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      });
+    }
+    const firstJson = await firstRes.json();
+    const innerData = (firstJson && firstJson.data) || {};
+    const items = Array.isArray(innerData.data) ? innerData.data.slice() : [];
+    const total = Number(innerData.total) || items.length;
+    const lastPage = Number(innerData.last_page) || 1;
+
+    // 单页就能装下 → 包装成图床原始三段式返回
+    if (lastPage <= 1) {
+      return json(200, wrapUpstream(items, innerData));
+    }
+
+    // 多页:并发拉剩余页 (page=2..lastPage)
+    const pageFetches = [];
+    for (let p = 2; p <= lastPage; p++) {
+      const u = new URL(UPSTREAM_BASE);
+      u.searchParams.set('order', 'newest');
+      u.searchParams.set('per_page', String(requestPerPage));
+      u.searchParams.set('page', String(p));
+      pageFetches.push(
+        fetch(u, { headers: upstreamHeaders })
+          .then((r) => r.ok ? r.json() : null)
+          .catch(() => null)
+      );
+    }
+    const morePages = await Promise.all(pageFetches);
+    for (const pg of morePages) {
+      const moreItems = pg && pg.data && pg.data.data;
+      if (Array.isArray(moreItems)) items.push(...moreItems);
+    }
+
+    return json(200, wrapUpstream(items, innerData));
   } catch (err) {
     // 图床不可达 / 超时等网络异常
     return json(502, {
@@ -95,4 +134,22 @@ function clampInt(raw, min, max, fallback) {
   const n = parseInt(raw, 10);
   if (Number.isNaN(n)) return fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * 包装成图床原始三段式: {status, message, data: {data: items, current_page, last_page, total}}
+ * 保留 innerData 中的其他字段(如有),仅覆盖 data 数组相关字段。
+ */
+function wrapUpstream(items, innerData) {
+  return {
+    status: true,
+    message: 'success',
+    data: Object.assign({}, innerData, {
+      data: items,
+      current_page: 1,
+      last_page: 1,
+      total: items.length,
+      per_page: items.length,
+    }),
+  };
 }
