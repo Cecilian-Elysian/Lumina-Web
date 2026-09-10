@@ -283,25 +283,48 @@ async function renderWall(images) {
     slices.push(shuffled.filter((_, i) => i % rowCount === r));
   }
 
-  /* ---- 3. 跨行打乱成加载队列(随机行顺序)---- */
+  /* ---- 3. 每行独立打乱(让行内出现顺序也是随机的)---- */
+  for (let r = 0; r < rowCount; r++) {
+    shuffle(slices[r]);
+  }
+
+  /* ---- 4. 跨行打乱成加载队列(随机行顺序)---- */
   const queue = [];
   for (let r = 0; r < rowCount; r++) {
-    slices[r].forEach((img, i) => {
+    slices[r].forEach((img) => {
       queue.push({
         row: r,
         data: img,
-        globalIndex: r + i * rowCount, // 与原逻辑一致:灯箱用此索引
+        // shuffled.indexOf = 在 shuffled 中的位置 = gallery 索引
+        // 灯箱点击用此值定位 gallery[] 中的图
+        globalIndex: shuffled.indexOf(img),
       });
     });
   }
   shuffle(queue);
 
-  /* ---- 4. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
+  /* ---- 5. 兜底:30 秒后无论加载进度如何,强制进入滚动 ---- */
+  const finalize = () => finalizeWall(wall, rows, rowCount);
+  const safetyTimer = setTimeout(() => {
+    if (!wall.classList.contains('ready')) {
+      console.warn('[Lumina] 加载超时,强制启动滚动动画');
+      finalize();
+    }
+  }, 30000);
+
+  /* ---- 6. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
   for (const item of queue) {
     await loadOneImage(item, rows[item.row]);
   }
+  clearTimeout(safetyTimer);
+  finalize();
+}
 
-  /* ---- 5. 全部加载完:克隆副本做无缝循环 + 加 .ready 启动滚动 ---- */
+/**
+ * 最终化:克隆副本做无缝循环 + 加 .ready 启动滚动
+ */
+function finalizeWall(wall, rows, rowCount) {
+  if (wall.classList.contains('ready')) return;
   for (let r = 0; r < rowCount; r++) {
     const track = rows[r].track;
     const realCards = track.querySelectorAll('.card:not(.copy)');
@@ -314,6 +337,7 @@ async function renderWall(images) {
     });
   }
   wall.classList.add('ready');
+  console.info('[Lumina] 全部图片加载完,启动无缝循环滚动');
 }
 
 /**

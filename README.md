@@ -96,6 +96,7 @@ Lumina-Web/
 ## 日志记录
 
 - 2026-09-10 主页开屏动画 + 顺序加载：`js/main.js` 的 `renderWall()` 重写为 async，预创建空行 → 跨行打乱队列 → 一张一张串行 `await loadOneImage()` → 全部完成 → 克隆副本 → 加 `.wall.ready` 启动无缝循环。`css/style.css` 新增 `@keyframes fadeInUp`（参考 Cecilian-Hub `PageTransition` 视觉效果，20px 下方淡入，0.6s · cubic-bezier(0.16, 1, 0.3, 1)）+ `.is-loading`/`.is-loaded` class。`.row-track` 滚动动画改为 `.wall.ready` 条件触发，加载完才启动。`index.html` 移除 `<p id="loading">` 占位。
+- 2026-09-10 (v2) 开屏动画加强 + 行内随机 + 安全兜底：`fadeInUp` 加深至 32px / 0.8s，整墙额外 `@keyframes wallFadeIn` 0.6s 淡入。每个行 slice 独立 `shuffle` 让行内出现顺序也随机。`renderWall()` 加 30s `setTimeout` 兜底：若某些图卡死导致 `.ready` 一直未加，30s 后强制启动滚动。新增 `finalizeWall()` 提取最终化步骤。
 - 2026-09-09 角色图集改为手动图集：删除 `CONFIG.characters` / `js/character-tags.js` / `js/character-runtime.js` / `tools/ai/build-character-tags.mjs` / `discover-characters.mjs` / `lib/vlm.mjs` / `lib/aliases.mjs` / `lib/corrections.mjs` 等 AI 角色识别整套。新增 `js/albums.js` + `js/album-runtime.js`（用户自命名图集，url → albumId 映射）。Manager 新增 📚 图集 tab：拖拽加图、拖到 🚮 = 解除归属；新建 / 重命名 / 删除图集。Viewer 改为按图集聚合（无 chip 切换、无过滤）。
 - 2026-09-09 图床分页自动合并：7bu.top 单页硬上限 40 张（total=59 / last_page=2），代理层并发拉全部页后合并返回。`tools/server/serve.mjs` 的 `fetchUpstreamImages()` 与 `functions/api/images.js` 的 `onRequest` 均改造，前端 `perPage=100` 现在能拿到全部 59 张，前端零修改。
 - 2026-09-09 角色图集增加 discover 工作流：`tools/ai/discover-characters.mjs` 自动扫描图床识别角色，无需预先维护 `CONFIG.characters`；新增 `tools/ai/lib/aliases.mjs`（prts.wiki 干员清单 + 别名归一化）；`vlm.mjs` 新增 `mode='open'` 选项。生成 `js/character-allowlist-suggested.js`（已 .gitignore）作为 review 草稿。
