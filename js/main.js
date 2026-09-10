@@ -393,13 +393,29 @@ function createCard(item) {
   img.loading = 'eager';
   img.decoding = 'async';
 
-  // 调试:失败时打印完整 URL 信息,排查哪些图 404
-  img.addEventListener('error', () => {
+  // 加载失败时:
+  //   1. 打日志排查(记录 name / thumb / url / 实际失败的 src)
+  //   2. 自动回退:若失败的是 2x 原图(url) → 改用 1x 缩略图(thumb)
+  //      避免 Retina 屏因原图 404 显示破碎图
+  img.addEventListener('error', function onImgError() {
+    const failedSrc = img.currentSrc || img.src;
     console.warn('[Lumina] 图片加载失败', {
       name: item.data.name,
-      thumb: img.currentSrc || img.src,
+      thumb: item.data.thumb,
       url: item.data.url,
+      failedSrc,
     });
+
+    // 已回退过,不再尝试(防止无限循环)
+    if (img.dataset.fallbackDone === 'true') return;
+
+    // 失败的是 2x 原图 → 回退到 thumb
+    if (item.data.thumb && failedSrc === item.data.url) {
+      console.warn('[Lumina] 2x 原图 404,回退到 thumb');
+      img.dataset.fallbackDone = 'true';
+      img.srcset = ''; // 关掉 srcset,避免再次选 2x
+      img.src = item.data.thumb;
+    }
   });
 
   figure.appendChild(img);
