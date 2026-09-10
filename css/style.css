@@ -203,6 +203,9 @@ body {
   display: flex;
   flex: none;
   width: max-content;              /* 轨道按内容自然撑开 */
+  /* 滚动动画默认关闭:所有图加载完后 JS 加 .wall.ready 才启动无缝循环 */
+}
+.wall.ready .row-track {
   animation: scroll 40s linear infinite;
 }
 
@@ -225,6 +228,22 @@ body {
 
 /* 悬停暂停：鼠标停在某行上时该行停下便于点图 */
 .row:hover .row-track { animation-play-state: paused; }
+
+/* ============================================================
+ * 加载动画:每张图从下方 20px 淡入
+ * 复用 Cecilian-Hub PageTransition 的视觉效果
+ * ============================================================ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card img.is-loading {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.card img.is-loaded {
+  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
 
 /* ============================================================
  * 5. 卡片与悬停效果
@@ -383,7 +402,8 @@ body {
  *    （避免眩晕不适，属于良好的 prefers-reduced-motion 实践）
  * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  .row-track { animation: none; }
+  .row-track,
+  .wall.ready .row-track { animation: none; }
   .card img,
   .lb-btn    { transition: none; }
 }

@@ -242,91 +242,137 @@ let gallery = [];
 
 /**
  * 渲染图片墙：按 CONFIG.rows 生成 N 行轨道
- * @param {Array<{url:string,name:string}>} images 图片数组
+ * 行为:跨行随机打乱成队列 → 一张一张串行加载 → 每张 fade-in-up →
+ *      全部加载完 → 克隆副本做无缝循环 → .wall.ready 启动滚动动画
+ *
+ * @param {Array<{url:string,name:string,thumb:string,srcset:string}>} images 图片数组
  */
-function renderWall(images) {
+async function renderWall(images) {
   const wall = document.getElementById('wall');
 
   // 一次性洗牌：让各行拿到随机子集、行内顺序也是随机的
-  // 不修改原数组（images 仍按图床返回顺序，便于排查/复用）；
-  // 每次刷新重新洗牌，循环动画里图不会跳来跳去
   const shuffled = shuffle(images.slice());
   // 灯箱 ←/→ 跟墙上顺序保持一致
   gallery = shuffled;
 
-  // 移除 index.html 里的"正在加载…"占位提示
-  const loading = document.getElementById('loading');
-  if (loading) loading.remove();
-
   const rowCount = CONFIG.rows;
 
+  /* ---- 1. 预创建空行容器(没有 <img>)---- */
+  const rows = [];
   for (let r = 0; r < rowCount; r++) {
-    /* ---- 1. 行容器：负责横向裁剪（overflow hidden） ---- */
     const row = document.createElement('div');
     row.className = 'row';
 
-    /* ---- 2. 轨道：真正做位移动画的元素 ---- */
     const track = document.createElement('div');
     track.className = 'row-track';
 
-    // 方向交替：偶数行(0,2,..)正向 左→右，奇数行反向 右→左
+    // 方向交替：偶数行正向，奇数行反向
     track.style.animationDirection = (r % 2 === 1) ? 'reverse' : 'normal';
-
-    // 各行速度错开（基准 40s，每行 +6s），流动更自然、不齐步走
+    // 各行速度错开(基准 40s,每行 +6s),流动更自然
     track.style.animationDuration = (40 + r * 6) + 's';
-
-    /* ---- 3. 图片分发：按下标取模轮流分到各行 ----
-     * 例：8 张图分 2 行 → 第0行拿 0,2,4,6；第1行拿 1,3,5,7
-     * 这样每行内容不同，且总量均摊 */
-    const slice = shuffled.filter((_, i) => i % rowCount === r);
-
-    // 生成本行的卡片 HTML（data-index 记录在全墙 gallery 中的索引，灯箱要用）
-    // 卡片小图用缩略图（thumb）加载更快；name 经过转义防 XSS
-    // <source media≤768px>（与 css 断点一致）：手机端只加载缩略图，
-    // 避免 DPR≥2 的手机按 srcset 2x 规则去下载多 MB 原图
-    const cardsHtml = slice
-      .map((img, i) => {
-        const globalIndex = r + i * rowCount; // 反推该卡片在 gallery 中的下标
-        return (
-          '<figure class="card" data-index="' + globalIndex + '">' +
-          `<source media="(max-width: 768px)" srcset="${escapeHtml(img.thumb)}">` +
-          `<img src="${escapeHtml(img.thumb)}"` +
-          ` srcset="${escapeHtml(img.srcset)}"` +
-          ' loading="lazy" decoding="async"' +
-          ` alt="${escapeHtml(img.name || '图片')}">` +
-          '</figure>'
-        );
-      })
-      .join('');
-
-    /* ---- 4. 关键：内容复制两份，实现无缝循环 ----
-     * 原卡与副本平铺进轨道，每张卡片统一右侧间距
-     * （接缝处间距一致，且 -50% 平移恰好等于一整份宽度）。
-     * 副本保留 aria-hidden + tabindex=-1：
-     *   - aria-hidden：屏幕阅读器不重复朗读
-     *   - tabindex=-1：键盘 Tab 也不会聚焦副本
-     */
-    const copyTail = cardsHtml.replaceAll(
-      '<figure class="card"',
-      '<figure class="card" aria-hidden="true" tabindex="-1"'
-    );
-    track.innerHTML = cardsHtml + copyTail;
-
-    // 焦点注入:每张 <img> 渲染后,把对应 URL 的 (x, y) 注入为 CSS 变量;
-    // 无数据时 focal-runtime.js 不做任何操作,沿用 CSS 默认 (50% / 25%)。
-    // 必须在 track.innerHTML 赋值后执行,此时 querySelectorAll 才能找到 img。
-    if (window.FocalRuntime && typeof window.FocalRuntime.applyTo === 'function') {
-      track.querySelectorAll('img').forEach((el) => {
-        window.FocalRuntime.applyTo(el, el.getAttribute('src'));
-      });
-    }
-
-    // 设置每张卡片的宽度（CONFIG.cardWidth，供 CSS 中 flex-basis 使用）
     track.style.setProperty('--card-w', CONFIG.cardWidth + 'px');
 
     row.appendChild(track);
     wall.appendChild(row);
+    rows.push({ track });
   }
+
+  /* ---- 2. 按行分组图片 ---- */
+  const slices = [];
+  for (let r = 0; r < rowCount; r++) {
+    slices.push(shuffled.filter((_, i) => i % rowCount === r));
+  }
+
+  /* ---- 3. 跨行打乱成加载队列(随机行顺序)---- */
+  const queue = [];
+  for (let r = 0; r < rowCount; r++) {
+    slices[r].forEach((img, i) => {
+      queue.push({
+        row: r,
+        data: img,
+        globalIndex: r + i * rowCount, // 与原逻辑一致:灯箱用此索引
+      });
+    });
+  }
+  shuffle(queue);
+
+  /* ---- 4. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
+  for (const item of queue) {
+    await loadOneImage(item, rows[item.row]);
+  }
+
+  /* ---- 5. 全部加载完:克隆副本做无缝循环 + 加 .ready 启动滚动 ---- */
+  for (let r = 0; r < rowCount; r++) {
+    const track = rows[r].track;
+    const realCards = track.querySelectorAll('.card:not(.copy)');
+    realCards.forEach((card) => {
+      const copy = card.cloneNode(true);
+      copy.classList.add('copy');
+      copy.setAttribute('aria-hidden', 'true');
+      copy.setAttribute('tabindex', '-1');
+      track.appendChild(copy);
+    });
+  }
+  wall.classList.add('ready');
+}
+
+/**
+ * 顺序加载一张图片到指定行,完成后 resolve。
+ * 等图真的解码完成(img.complete + naturalWidth)才继续,
+ * 失败/超时也 resolve 以免阻塞整个队列。
+ */
+function loadOneImage(item, rowEl) {
+  return new Promise((resolve) => {
+    const card = createCard(item);
+    const img = card.querySelector('img');
+    if (img) img.classList.add('is-loading');
+    rowEl.track.appendChild(card);
+
+    if (!img) { resolve(); return; }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      img.classList.remove('is-loading');
+      img.classList.add('is-loaded'); // 错误也加,至少让图显示(破碎也看得见)
+      resolve();
+    };
+
+    if (img.complete && img.naturalWidth > 0) {
+      finish();
+    } else {
+      img.addEventListener('load', finish, { once: true });
+      img.addEventListener('error', finish, { once: true });
+      setTimeout(finish, 5000); // 超时兜底
+    }
+  });
+}
+
+/**
+ * 创建一张卡片(DOM 方式,无需 HTML 转义)。
+ * loading="eager" 由我们控制顺序,lazy 反而坏事。
+ */
+function createCard(item) {
+  const figure = document.createElement('figure');
+  figure.className = 'card';
+  figure.dataset.index = item.globalIndex;
+
+  const img = document.createElement('img');
+  img.src = item.data.thumb;
+  img.srcset = item.data.srcset;
+  img.alt = item.data.name || '图片';
+  img.loading = 'eager';
+  img.decoding = 'async';
+
+  figure.appendChild(img);
+
+  // 焦点注入(无数据时 focal-runtime.js 不做任何操作)
+  if (window.FocalRuntime && typeof window.FocalRuntime.applyTo === 'function') {
+    window.FocalRuntime.applyTo(img, img.getAttribute('src'));
+  }
+
+  return figure;
 }
 
 /* ============================================================
