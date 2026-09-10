@@ -254,6 +254,7 @@ async function renderWall(images) {
   const shuffled = shuffle(images.slice());
   // 灯箱 ←/→ 跟墙上顺序保持一致
   gallery = shuffled;
+  console.info('[Lumina] 共加载', images.length, '张图,跨', CONFIG.rows, '行');
 
   const rowCount = CONFIG.rows;
 
@@ -367,7 +368,10 @@ function loadOneImage(item, rowEl) {
       finish();
     } else {
       img.addEventListener('load', finish, { once: true });
-      img.addEventListener('error', finish, { once: true });
+      img.addEventListener('error', () => {
+        console.warn('[Lumina] loadOneImage error:', img.currentSrc || img.src);
+        finish();
+      }, { once: true });
       setTimeout(finish, 5000); // 超时兜底
     }
   });
@@ -388,6 +392,15 @@ function createCard(item) {
   img.alt = item.data.name || '图片';
   img.loading = 'eager';
   img.decoding = 'async';
+
+  // 调试:失败时打印完整 URL 信息,排查哪些图 404
+  img.addEventListener('error', () => {
+    console.warn('[Lumina] 图片加载失败', {
+      name: item.data.name,
+      thumb: img.currentSrc || img.src,
+      url: item.data.url,
+    });
+  });
 
   figure.appendChild(img);
 
