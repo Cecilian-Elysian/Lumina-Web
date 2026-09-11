@@ -30,3 +30,11 @@ tools/node_modules/
 tools/weights/
 tools/.tmp/
 tools/.cache/
+
+# 空的占位目录（永远不会进构建产物）
+/assets/
+
+# 编辑器/备份残留（防御性）
+*.bak
+*.swp
+*~

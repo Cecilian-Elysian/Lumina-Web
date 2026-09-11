@@ -1,4 +1,4 @@
-# Lumina Tools · 焦点管理器
+# Lumina Tools · 编辑器
 
 本地运行的服务与 AI 工具，为 `../js/focal-points.js` 产出焦点数据 + `../js/albums.js` 提供图集管理 API。
 Manager UI 位于项目根目录 `manager/`，整目录被 Git 忽略；Tools 源码正常进入 GitHub，但不会进入 Cloudflare 的 `dist/`。
@@ -7,7 +7,9 @@ Manager UI 位于项目根目录 `manager/`，整目录被 Git 忽略；Tools �
 
 ```
 tools/
-├── start.bat / start.sh         ← 一键启动（Win / Unix）
+├── start.bat / start.sh         ← 终端启动器（Win / Unix）
+├── dev.bat                      ← Windows 一站式：装依赖 + 启服务 + 打开浏览器(DevTools 自动开)
+├── console.bat                  ← Windows 快捷键：服务已启时直接打开浏览器(DevTools 自动开)
 ├── package.json                 ← Node 依赖
 ├── README.md                    ← 本文件
 ├── build-pages.mjs              ← 生成 Cloudflare Pages 的 dist/
@@ -28,7 +30,11 @@ tools/
 
 ### 1. 启动可视化编辑器
 
-**Windows：** 双击 `start.bat`
+**Windows（推荐）：** 双击 `dev.bat` —— 一站式完成"装依赖 → 启动服务 → 等待就绪 → 打开 Edge/Chrome(DevTools 自动开)"
+
+服务已运行但想新开一个标签页？再双击 `console.bat`。
+
+要查看原始日志（前台运行）：双击 `start.bat`。
 
 **macOS / Linux：**
 ```bash

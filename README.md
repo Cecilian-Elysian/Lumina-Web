@@ -30,12 +30,31 @@ python -m http.server 8000
 3. 环境变量 `QUBU_TOKEN` 添加到 Production 与 Preview
 4. 每次 push main 自动部署
 
+## 运维风险提示
+
+- **图床分页合并是"不设上限"的**:7bu.top 单页最多 40 张,代理会**并发拉所有分页**。如果图床总图片数很多(> 400 张),单次 `/api/images` 请求会瞬时发起十几个并发请求打到图床。建议把图床图片数量控制在 **400 张以内**(约 10 个分页以内);代理层在 `last_page > 10` 时会在 Cloudflare 控制台打警告日志,可作为运维信号。
+- **AI 批量焦点分析是 merge 而非覆盖**:重跑 `node ai/build-focal-points.mjs` 不会再清掉手工标注的焦点(详见 `tools/server/lib/config-reader.mjs` 的 `mergeFocalPoints`)。
+
 
 ---
 
 ## 操作指南
 
 >正在编写......
+
+### Windows 用户
+
+- **首次启动**:双击 `tools/dev.bat` —— 一站式完成"装依赖 → 启动服务 → 等待端口 → 打开 Chrome/Edge(DevTools 自动开)"
+- **服务已启,新开标签**:双击 `tools/console.bat`
+- **看原始日志**:双击 `tools/start.bat`(前台运行)
+
+服务只监听 `127.0.0.1:8002`,关闭启动窗口或 `Ctrl+C` 即可停服。详见 `tools/README.md`。
+
+### macOS / Linux 用户
+
+```bash
+./tools/start.sh
+```
 
 ## 文件结构
 
@@ -95,13 +114,11 @@ Lumina-Web/
 
 ## 日志记录
 
-- 2026-09-10 主页开屏动画 + 顺序加载：`js/main.js` 的 `renderWall()` 重写为 async，预创建空行 → 跨行打乱队列 → 一张一张串行 `await loadOneImage()` → 全部完成 → 克隆副本 → 加 `.wall.ready` 启动无缝循环。`css/style.css` 新增 `@keyframes fadeInUp`（参考 Cecilian-Hub `PageTransition` 视觉效果，20px 下方淡入，0.6s · cubic-bezier(0.16, 1, 0.3, 1)）+ `.is-loading`/`.is-loaded` class。`.row-track` 滚动动画改为 `.wall.ready` 条件触发，加载完才启动。`index.html` 移除 `<p id="loading">` 占位。
-- 2026-09-10 (v2) 开屏动画加强 + 行内随机 + 安全兜底：`fadeInUp` 加深至 32px / 0.8s，整墙额外 `@keyframes wallFadeIn` 0.6s 淡入。每个行 slice 独立 `shuffle` 让行内出现顺序也随机。`renderWall()` 加 30s `setTimeout` 兜底：若某些图卡死导致 `.ready` 一直未加，30s 后强制启动滚动。新增 `finalizeWall()` 提取最终化步骤。
-- 2026-09-10 (v3) 修复 Retina 屏个别图片破碎：`createCard()` 的 img error handler 检测 `img.currentSrc === item.data.url`（即 2x 原图 404）时，清空 `srcset` + 改 `src = item.data.thumb` 回退到 1x 缩略图，同时 `dataset.fallbackDone` 防止无限循环。失败时 console.warn 打印 `{ name, thumb, url, failedSrc }` 便于排查图床 404。
-- 2026-09-09 角色图集改为手动图集：删除 `CONFIG.characters` / `js/character-tags.js` / `js/character-runtime.js` / `tools/ai/build-character-tags.mjs` / `discover-characters.mjs` / `lib/vlm.mjs` / `lib/aliases.mjs` / `lib/corrections.mjs` 等 AI 角色识别整套。新增 `js/albums.js` + `js/album-runtime.js`（用户自命名图集，url → albumId 映射）。Manager 新增 📚 图集 tab：拖拽加图、拖到 🚮 = 解除归属；新建 / 重命名 / 删除图集。Viewer 改为按图集聚合（无 chip 切换、无过滤）。
-- 2026-09-09 图床分页自动合并：7bu.top 单页硬上限 40 张（total=59 / last_page=2），代理层并发拉全部页后合并返回。`tools/server/serve.mjs` 的 `fetchUpstreamImages()` 与 `functions/api/images.js` 的 `onRequest` 均改造，前端 `perPage=100` 现在能拿到全部 59 张，前端零修改。
-- 2026-09-09 角色图集增加 discover 工作流：`tools/ai/discover-characters.mjs` 自动扫描图床识别角色，无需预先维护 `CONFIG.characters`；新增 `tools/ai/lib/aliases.mjs`（prts.wiki 干员清单 + 别名归一化）；`vlm.mjs` 新增 `mode='open'` 选项。生成 `js/character-allowlist-suggested.js`（已 .gitignore）作为 review 草稿。
-- 2026-09-08 图集页重构为角色图集：搜索框启用（角色名 / 别名即时过滤）；新增 `js/character-runtime.js` 与 `js/character-tags.js`；新增 `tools/ai/build-character-tags.mjs`（MiniMax VLM 离线批量打标）
+- 2026-09-10 主页开屏动画 + 顺序加载:`js/main.js` 的 `renderWall()` 重写为 async,预创建空行 → 跨行打乱队列 → 一张一张串行 `await loadOneImage()` → 全部完成 → 克隆副本 → 加 `.wall.ready` 启动无缝循环。`css/style.css` 新增 `@keyframes fadeInUp`(参考 Cecilian-Hub `PageTransition` 视觉效果,20px 下方淡入,0.6s · cubic-bezier(0.16, 1, 0.3, 1))+ `.is-loading`/`.is-loaded` class。`.row-track` 滚动动画改为 `.wall.ready` 条件触发,加载完才启动。`index.html` 移除 `<p id="loading">` 占位。
+- 2026-09-10 (v2) 开屏动画加强 + 行内随机 + 安全兜底:`fadeInUp` 加深至 32px / 0.8s,整墙额外 `@keyframes wallFadeIn` 0.6s 淡入。每个行 slice 独立 `shuffle` 让行内出现顺序也随机。`renderWall()` 加 30s `setTimeout` 兜底:若某些图卡死导致 `.ready` 一直未加,30s 后强制启动滚动。新增 `finalizeWall()` 提取最终化步骤。
+- 2026-09-10 (v3) 修复 Retina 屏个别图片破碎:`createCard()` 的 img error handler 检测 `img.currentSrc === item.data.url`(即 2x 原图 404)时,清空 `srcset` + 改 `src = item.data.thumb` 回退到 1x 缩略图,同时 `dataset.fallbackDone` 防止无限循环。失败时 console.warn 打印 `{ name, thumb, url, failedSrc }` 便于排查图床 404。
+- 2026-09-09 角色图集改为手动图集:删除 `CONFIG.characters` / `js/character-tags.js` / `js/character-runtime.js` / `tools/ai/build-character-tags.mjs` / `discover-characters.mjs` / `lib/vlm.mjs` / `lib/aliases.mjs` / `lib/corrections.mjs` 等 AI 角色识别整套。新增 `js/albums.js` + `js/album-runtime.js`(用户自命名图集,url → albumId 映射)。Manager 新增 📚 图集 tab:拖拽加图、拖到 🚮 = 解除归属;新建 / 重命名 / 删除图集。Viewer 改为按图集聚合(无 chip 切换、无过滤)。
+- 2026-09-09 图床分页自动合并:7bu.top 单页硬上限 40 张(total=59 / last_page=2),代理层并发拉全部页后合并返回。`tools/server/serve.mjs` 的 `fetchUpstreamImages()` 与 `functions/api/images.js` 的 `onRequest` 均改造,前端 `perPage=100` 现在能拿到全部 59 张,前端零修改。
 - 2026-09-03 新增图集页（gallery.html）
 - 2026-09-03 顶栏重构 + 品牌色（玫红橙渐变）
 - 2026-09-03 接入真实图床数据
@@ -123,5 +140,3 @@ Lumina-Web/
 
 - AI 焦点分析：[@vladmandic/face-api](https://github.com/vladmandic/face-api)
 - 本地图集管理: Manager 拖拽（git 忽略，仅本机）
-
-- 控制台仓库: 还没开始写qwq
