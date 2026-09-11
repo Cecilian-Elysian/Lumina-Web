@@ -28,26 +28,9 @@
   <!-- 外部样式表：先主样式，再图集页专用样式 -->
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/gallery.css">
-  <!-- 解封黑魔法:已访客立即打 splash-seen 类,跳过 splash 直接显示 -->
-  <script>
-    try {
-      if (sessionStorage.getItem('lumina_splash_seen') === 'true') {
-        document.documentElement.classList.add('splash-seen');
-      }
-    } catch(e) {}
-  </script>
 </head>
 <body>
   <!-- 导航栏由 js/navbar.js 统一注入（自动高亮当前页），无需在此手写 -->
-
-  <!-- ========== Splash 屏(首访开屏动画) ========== -->
-  <div id="splash" class="splash" aria-hidden="true">
-    <div class="splash-inner">
-      <h1 class="splash-title">LUMINA</h1>
-      <p class="splash-sub">INITIALIZING SYSTEM</p>
-      <div class="splash-bar"><div class="splash-bar-fill"></div></div>
-    </div>
-  </div>
 
   <!-- ========== Hero 区：标题 + 副标题 + 搜索框 ========== -->
   <section class="gallery-hero">
@@ -92,8 +75,6 @@
   <script src="js/shared/utils.js" defer></script>
   <script src="js/shared/api.js" defer></script>
   <script src="js/shared/lightbox.js" defer></script>
-  <!-- Splash 首访屏控制 -->
-  <script src="js/shared/splash.js" defer></script>
   <!-- 统一导航栏注入（defer 保证在 DOM 就绪后执行） -->
   <script src="js/navbar.js" defer></script>
   <!-- 脚本：albums → album-runtime → config → gallery（依赖顺序不可换） -->

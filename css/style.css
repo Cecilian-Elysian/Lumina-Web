@@ -5,14 +5,13 @@
  *   1. CSS 变量（主题配色/尺寸，改主题只需改变量）
  *   2. 基础重置与页面背景
  *   3. 标题区 / 页脚
- *   4. Splash 屏（首访开屏动画）
- *   5. 图片墙：行(.row) + 轨道(.row-track) + 无缝滚动动画
- *   6. 卡片(.card)与悬停效果
- *   7. 加载占位
- *   8. 灯箱（遮罩/大图/箭头/关闭/说明文字）
- *   9. 响应式（平板 / 手机）
- *  10. 无障碍：prefers-reduced-motion 适配
- *  11. 404 页样式
+ *   4. 图片墙：行(.row) + 轨道(.row-track) + 无缝滚动动画
+ *   5. 卡片(.card)与悬停效果
+ *   6. 加载占位
+ *   7. 灯箱（遮罩/大图/箭头/关闭/说明文字）
+ *   8. 响应式（平板 / 手机）
+ *   9. 无障碍：prefers-reduced-motion 适配
+ *  10. 404 页样式
  * ============================================================ */
 
 /* ============================================================
@@ -198,86 +197,7 @@ body {
 }
 
 /* ============================================================
- * 4. Splash 屏（首访开屏动画）
- * ------------------------------------------------------------
- * 由 js/shared/splash.js 控制生命周期：
- *   - 1.5s 进度条 + 0.6s 退出动画(opacity/scale/blur)
- *   - 退出后给 <html> 加 splash-seen 类 → #wall opacity 0→1
- *   - 已访客：head 内联脚本直接加 splash-seen，splash 屏不会出现
- * ============================================================ */
-
-.splash {
-  position: fixed;
-  inset: 0;
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, #14161a 0%, #1a1d22 100%);
-}
-
-.splash-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.splash-title {
-  font-size: 3rem;
-  font-weight: 900;
-  font-style: oblique 12deg;
-  letter-spacing: 0.25em;
-  margin: 0;
-  background: linear-gradient(135deg, var(--brand-1), var(--brand-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 0 20px rgba(255, 77, 109, 0.3);
-}
-
-.splash-sub {
-  margin: 0;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.5em;
-  color: var(--text-sub);
-}
-
-.splash-bar {
-  width: 160px;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.1);
-  position: relative;
-  overflow: hidden;
-}
-
-.splash-bar-fill {
-  position: absolute;
-  inset: 0;
-  width: 0%;
-  background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
-  box-shadow: 0 0 10px rgba(255, 77, 109, 0.7);
-  animation: splashProgress 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes splashProgress {
-  from { width: 0%; }
-  to   { width: 100%; }
-}
-
-/* 退出动画：splash.js 倒计时结束加 .splash-exit 类 */
-.splash.splash-exit {
-  opacity: 0;
-  transform: scale(0.96);
-  filter: blur(16px);
-  transition: opacity 0.6s ease-in-out,
-              transform 0.6s ease-in-out,
-              filter 0.6s ease-in-out;
-}
-
-/* ============================================================
- * 5. 图片墙：行 + 轨道 + 无缝滚动
+ * 4. 图片墙：行 + 轨道 + 无缝滚动
  * ============================================================
  * 结构（由 main.js 生成）：
  *   .wall
@@ -290,14 +210,15 @@ body {
 .wall {
   flex: 1;
   padding-top: 25px; /* 导航栏与图片展示的间隔*/
+  /* 整墙淡入:页面打开后整个 wall 先淡入,内部卡片再各自淡入,
+   * 形成"先外层后内层"的开屏节奏(类似 PageTransition 的整体入场) */
+  animation: wallFadeIn 0.6s ease-out forwards;
 }
 
-/* 解封黑魔法：墙默认隐藏，splash-seen 后再 fade in
- * （替代原先的 wallFadeIn 动画；现在由 splash + 解封统一管理） */
-#wall { opacity: 0; }
-html.splash-seen #wall {
-  opacity: 1;
-  transition: opacity 0.6s ease-out;
+/* 整墙淡入的关键帧(独立定义,避免和 .wall 块耦合) */
+@keyframes wallFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* 行：只露出本行内容，超出部分隐藏（滚动窗口） */
@@ -360,7 +281,7 @@ html.splash-seen #wall {
 }
 
 /* ============================================================
- * 6. 卡片与悬停效果
+ * 5. 卡片与悬停效果
  * ============================================================ */
 
 /* 卡片：figure 自带语义（配图块），作为点击区域 */
@@ -392,7 +313,7 @@ html.splash-seen #wall {
 }
 
 /* ============================================================
- * 7. 加载占位
+ * 6. 加载占位
  * ============================================================ */
 .loading {
   text-align: center;
@@ -402,7 +323,7 @@ html.splash-seen #wall {
 }
 
 /* ============================================================
- * 8. 灯箱（大图预览）
+ * 7. 灯箱（大图预览）
  * ============================================================ */
 
 /* 遮罩层：全屏半透明黑，图片居中 */
@@ -477,7 +398,7 @@ html.splash-seen #wall {
 .lb-next  { right: 26px; top: 50%; transform: translateY(-50%); }
 
 /* ============================================================
- * 9. 响应式
+ * 8. 响应式
  * ------------------------------------------------------------
  * 通过覆盖 CSS 变量 + 隐藏部分行实现：
  *   平板(≤1100px)：卡片变小
@@ -512,22 +433,18 @@ html.splash-seen #wall {
 }
 
 /* ============================================================
- * 10. 无障碍：用户系统开启"减少动态效果"时停止流动
+ * 9. 无障碍：用户系统开启"减少动态效果"时停止流动
  *    （避免眩晕不适，属于良好的 prefers-reduced-motion 实践）
  * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   .row-track,
   .wall.ready .row-track { animation: none; }
   .card img,
-  .lb-btn,
-  .splash-bar-fill { transition: none; animation: none; }
-  .card img.is-loaded { animation-delay: 0ms !important; }
-  #wall { opacity: 1 !important; transition: none !important; }
-  #splash { display: none !important; }
+  .lb-btn    { transition: none; }
 }
 
 /* ============================================================
- * 11. 404 页面（.site-header 等由 404.html 引用）
+ * 10. 404 页面（.site-header 等由 404.html 引用）
  * ============================================================ */
 .site-header {
   flex: 1;

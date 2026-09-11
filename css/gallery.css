@@ -6,7 +6,6 @@
  *   3. 卡片（封面 + 标题 + 日期胶囊）
  *   4. 工具类（hidden / 加载占位）
  *   5. 响应式（平板 / 手机）
- *   6. 解封机制 + 错峰淡入(配合主页 splash)
  * ============================================================ */
 
 /* ============================================================
@@ -220,35 +219,4 @@
   .gallery-card-meta { padding: 12px 14px; }
   .gallery-card-title { font-size: 0.95rem; }
   .gallery-card-date { font-size: 0.7rem; padding: 3px 8px; }
-}
-
-/* ============================================================
- * 6. 解封机制 + 错峰淡入(配合主页 splash)
- * ------------------------------------------------------------
- * 与 css/style.css 协作:
- *   - #wall / .gallery-grid 默认 opacity:0
- *   - 主页 splash.js 给 <html> 加 splash-seen 后过渡到 opacity:1
- *   - 卡片错峰淡入:JS 在 article style 写 animation-delay(35ms × index,封顶 20)
- * ============================================================ */
-
-.gallery-main { opacity: 0; }
-html.splash-seen .gallery-main {
-  opacity: 1;
-  transition: opacity 0.6s ease-out;
-}
-
-.gallery-card {
-  /* 错峰淡入入场:JS 注入 animation-delay,默认 0ms */
-  animation: galleryCardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-
-@keyframes galleryCardIn {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* reduced-motion:跳过淡入,直接显示 */
-@media (prefers-reduced-motion: reduce) {
-  .gallery-main { opacity: 1 !important; transition: none !important; }
-  .gallery-card { animation: none !important; }
 }

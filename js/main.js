@@ -99,9 +99,10 @@
       }
     }, 30000);
 
-    /* ---- 6. 并行加载:所有 thumb 同时发起 fetch,浏览器自带 HTTP 并发,
-     *       各卡独立淡入(loadOneImage 内部按 globalIndex 设错峰 delay)---- */
-    await Promise.all(queue.map((item) => loadOneImage(item, rows[item.row])));
+    /* ---- 6. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
+    for (const item of queue) {
+      await loadOneImage(item, rows[item.row]);
+    }
     clearTimeout(safetyTimer);
     finalize();
   }
