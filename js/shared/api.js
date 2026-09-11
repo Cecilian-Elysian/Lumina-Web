@@ -9,7 +9,7 @@
  *                    统一格式:{url 原图,name 名,thumb 缩略图,srcset 1x/2x}
  *   - mapImage(item) 单图映射(供高级用法)
  *
- * 依赖:window.CONFIG(必须先加载 js/config.js)
+ * 依赖:CONFIG(由 js/config.js 以 const 声明,跨 script 可见)
  *      window.LuminaShared.getByPath / showErrorBanner(必须先加载 utils.js)
  * ============================================================ */
 
@@ -25,7 +25,7 @@
    * @returns {Object} fetch 用的 headers
    */
   function buildHeaders() {
-    const cfg = window.CONFIG;
+    const cfg = CONFIG;
     const headers = { Accept: 'application/json' };
 
     if (!cfg || !cfg.token || cfg.authType === 'none') return headers;
@@ -51,7 +51,7 @@
    * @returns {string} 改写后的 URL(失败回退原值)
    */
   function rewriteThumb(thumb) {
-    const cfg = window.CONFIG;
+    const cfg = CONFIG;
     const rule = cfg && cfg.thumbRewrite;
     if (!rule) return thumb;
     try {
@@ -87,7 +87,7 @@
    * @returns {{url:string, name:string, thumb:string, srcset:string}}
    */
   function mapImage(item) {
-    const cfg = window.CONFIG;
+    const cfg = CONFIG;
     const _getByPath = getByPath();
 
     const url = _getByPath(item, cfg.imgUrlField);
@@ -110,7 +110,7 @@
    * @returns {Promise<Array<{url:string, name:string, thumb:string, srcset:string}>>}
    */
   async function loadImages() {
-    const cfg = window.CONFIG;
+    const cfg = CONFIG;
     if (!cfg) throw new Error('CONFIG 未加载,请确保 js/config.js 先于本脚本');
 
     const _getByPath = getByPath();
