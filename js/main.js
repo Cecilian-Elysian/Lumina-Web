@@ -99,10 +99,9 @@
       }
     }, 30000);
 
-    /* ---- 6. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
-    for (const item of queue) {
-      await loadOneImage(item, rows[item.row]);
-    }
+    /* ---- 6. 并行加载:所有 thumb 同时发起 fetch,浏览器自带 HTTP 并发,
+     *       各卡独立淡入(loadOneImage 内部按 globalIndex 设错峰 delay)---- */
+    await Promise.all(queue.map((item) => loadOneImage(item, rows[item.row])));
     clearTimeout(safetyTimer);
     finalize();
   }
@@ -145,6 +144,9 @@
       const finish = () => {
         if (done) return;
         done = true;
+        // 错峰淡入:按 shuffled 全局索引排序,前 20 张生效,封顶 700ms
+        const idx = Math.min(item.globalIndex, 20);
+        img.style.animationDelay = (idx * 35) + 'ms';
         img.classList.remove('is-loading');
         img.classList.add('is-loaded'); // 错误也加,至少让图显示(破碎也看得见)
         resolve();
