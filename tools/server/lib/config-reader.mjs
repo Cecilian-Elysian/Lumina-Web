@@ -2,13 +2,19 @@
 /* ============================================================
  * Lumina Tools — 共享 viewer 配置读取器
  * ------------------------------------------------------------
- * 供 server/ 和 ai/ 共享使用,从 ../js/config.js 解析 CONFIG 对象。
+ * 供 server/ 和 ai/ 共享使用,从 ../js/*.js 解析数据。
  *
- * 注意:config.js 是浏览器侧脚本格式(全局 const),
- *      这里用 eval 而非 import。
+ * 安全要点:
+ *   - 历史版本用 (0, eval)('(' + m[1] + ')') 解析 viewer 文件,
+ *     若 viewer 文件被编辑时混入了非字面量表达式(如 process.exit),
+ *     会被真的执行。
+ *   - 现版本改用 acorn 静态解析,只接受
+ *     ObjectExpression / ArrayExpression / Literal,
+ *     任何其它节点都抛错,绝不执行。
  * ============================================================ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { parse } from 'acorn';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +26,141 @@ export function getViewerDir() {
   return path.resolve(__dirname, '..', '..', '..');
 }
 
+/* ============================================================
+ * 安全解析
+ * ------------------------------------------------------------
+ * 给定一段形如 `const FOO = {...};` 或 `window.FOO = {...};` 或裸 `{...}` 的代码,
+ * 返回该对象字面量的纯数据值。
+ *
+ * 只接受:
+ *   - ObjectExpression (递归)
+ *   - ArrayExpression  (递归)
+ *   - Literal (string / number / boolean / null)
+ *
+ * 其它节点(Identifier / CallExpression / MemberExpression / Function / ...)一律抛错。
+ * 任何路径下都不会执行代码,绝不调用 process.exit / fetch 等。
+ * ============================================================ */
+export function safeParseObject(raw, varName) {
+  if (typeof raw !== 'string') throw new Error('safeParseObject: raw 必须是字符串');
+
+  // 1. 去掉 /* ... */ 注释(本项目的 .js 顶部都是块注释)
+  const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // 2. 用 acorn 解析
+  let ast;
+  try {
+    ast = parse(stripped, { ecmaVersion: 2022, sourceType: 'script' });
+  } catch (e) {
+    throw new Error('acorn 解析失败: ' + e.message);
+  }
+
+  // 3. 拒绝顶层 FunctionDeclaration(即便 targetNode 后面能找到,函数声明本身就是 RCE 风险)
+  for (const stmt of ast.body) {
+    if (stmt.type === 'FunctionDeclaration' || stmt.type === 'FunctionExpression') {
+      throw new Error('不允许顶层函数声明(纯字面量模式)');
+    }
+  }
+
+  // 4. 找到我们要的赋值语句
+  //    - 若提供了 varName:必须形如 `const|var|let NAME = <obj>;` 或 `window.NAME = <obj>;`
+  //    - 若没提供:接受裸 `({...})` 表达式(单语句)
+  let targetNode = null;
+
+  if (varName) {
+    for (const stmt of ast.body) {
+      // 形式 1: const|let|var NAME = <obj>;
+      if (stmt.type === 'VariableDeclaration' &&
+          (stmt.kind === 'const' || stmt.kind === 'let' || stmt.kind === 'var')) {
+        for (const decl of stmt.declarations) {
+          if (decl.id.type === 'Identifier' && decl.id.name === varName && decl.init) {
+            targetNode = decl.init;
+            break;
+          }
+        }
+        if (targetNode) break;
+        continue;
+      }
+      // 形式 2: NAME = <obj>;  (赋值表达式,可能不合法但项目里没用到)
+      if (stmt.type === 'ExpressionStatement') {
+        const expr = stmt.expression;
+        if (expr.type === 'AssignmentExpression' && expr.operator === '=') {
+          const lhs = expr.left;
+          const okLhs =
+            (lhs.type === 'Identifier' && lhs.name === varName) ||
+            (lhs.type === 'MemberExpression' &&
+              lhs.object.type === 'Identifier' && lhs.object.name === 'window' &&
+              lhs.property.type === 'Identifier' && lhs.property.name === varName);
+          if (okLhs) { targetNode = expr.right; break; }
+        }
+      }
+    }
+  } else {
+    // 没指定 varName:接受 `({...})` 作为唯一语句(裸 `{...}` 在 JS 里是 block,会报错)
+    if (ast.body.length === 1 &&
+        ast.body[0].type === 'ExpressionStatement' &&
+        ast.body[0].expression.type === 'ObjectExpression') {
+      targetNode = ast.body[0].expression;
+    }
+  }
+
+  if (!targetNode) {
+    throw new Error(`未找到 ${varName ? '"' + varName + '"' : 'ObjectExpression'} 的赋值语句`);
+  }
+
+  // 5. 走 AST 求值(只允许字面量)
+  return evalLiteral(targetNode);
+}
+
+function evalLiteral(node) {
+  if (!node || typeof node !== 'object') {
+    throw new Error('evalLiteral: 无效节点');
+  }
+
+  if (node.type === 'Literal') {
+    // 注意:undefined / function / symbol 等不允许(项目里不会出现)
+    const v = node.value;
+    if (v === undefined) {
+      // acorn 会把 { a: void 0 } 解析成 Literal value=undefined
+      // 这种刻意写法不在白名单,直接拒
+      throw new Error('不允许 Literal undefined (请显式写 null 或省略字段)');
+    }
+    return v;
+  }
+
+  if (node.type === 'ObjectExpression') {
+    const out = {};
+    for (const prop of node.properties) {
+      if (prop.type !== 'Property') {
+        // SpreadElement / MethodDefinition 等一律不允许
+        throw new Error('对象中不允许 SpreadElement / Method(纯字面量模式)');
+      }
+      if (prop.computed) {
+        // 计算属性名 [expr]: 也属于表达式,拒绝
+        throw new Error('不允许计算属性名 [expr]');
+      }
+      if (prop.method || prop.kind === 'get' || prop.kind === 'set') {
+        throw new Error('不允许方法/getter/setter');
+      }
+      const key = prop.key.type === 'Identifier' ? prop.key.name
+                : prop.key.type === 'Literal'   ? String(prop.key.value)
+                : (() => { throw new Error('不支持的属性键类型: ' + prop.key.type); })();
+      out[key] = evalLiteral(prop.value);
+    }
+    return out;
+  }
+
+  if (node.type === 'ArrayExpression') {
+    return node.elements.map((el) => el === null ? null : evalLiteral(el));
+  }
+
+  // 任何其它节点 = 一律拒绝
+  throw new Error('拒绝非字面量节点: ' + node.type);
+}
+
+/* ============================================================
+ * viewer config.js (CONFIG)
+ * ============================================================ */
+
 /**
  * 读取并解析 ../js/config.js,返回完整的 CONFIG 对象。
  * @returns {Promise<Object>}
@@ -27,9 +168,7 @@ export function getViewerDir() {
 export async function readViewerConfig() {
   const viewerDir = getViewerDir();
   const raw = await fs.readFile(path.join(viewerDir, 'js', 'config.js'), 'utf8');
-  const m = raw.match(/const\s+CONFIG\s*=\s*(\{[\s\S]*?\n\});/);
-  if (!m) throw new Error('config.js 中未找到 CONFIG 对象');
-  return (0, eval)('(' + m[1] + ')');
+  return safeParseObject(raw, 'CONFIG');
 }
 
 /**
@@ -51,6 +190,10 @@ export async function readLocalSecret(name) {
   return null;
 }
 
+/* ============================================================
+ * focal-points.js (FOCAL_POINTS)
+ * ============================================================ */
+
 /**
  * 读取并解析 ../js/focal-points.js,返回 FOCAL_POINTS 对象。
  * 文件不存在时返回空对象。
@@ -60,9 +203,7 @@ export async function readFocalPoints() {
   const viewerDir = getViewerDir();
   try {
     const raw = await fs.readFile(path.join(viewerDir, 'js', 'focal-points.js'), 'utf8');
-    const m = raw.match(/(?:window\.)?FOCAL_POINTS\s*=\s*(\{[\s\S]*?\n\});/);
-    if (!m) return {};
-    return (0, eval)('(' + m[1] + ')');
+    return safeParseObject(raw, 'FOCAL_POINTS');
   } catch (e) {
     if (e.code === 'ENOENT') return {};
     throw e;
@@ -88,6 +229,29 @@ export async function writeFocalPoints(json) {
   const body = `window.FOCAL_POINTS = ${JSON.stringify(json, null, 2)};\n`;
   await fs.writeFile(path.join(viewerDir, 'js', 'focal-points.js'), header + body, 'utf8');
   return { ok: true, count: Object.keys(json).length };
+}
+
+/**
+ * 合并新旧焦点数据(纯函数,不读写文件)
+ *   - existing 中存在、AI 也检测到 → 用 AI 的(更新)
+ *   - existing 中存在、AI 未检测到 → 保留旧值(不覆盖人工标注)
+ *   - AI 检测到、existing 没有 → 新增
+ *
+ * 返回 { merged, stats: { kept, updated, added } }
+ */
+export function mergeFocalPoints(existing, detected) {
+  const merged = Object.assign({}, existing);
+  let updated = 0;
+  let added = 0;
+  for (const url of Object.keys(detected || {})) {
+    const newVal = detected[url];
+    if (!newVal) continue;
+    if (url in merged) updated++;
+    else added++;
+    merged[url] = newVal;
+  }
+  const kept = Object.keys(merged).length - updated - added;
+  return { merged, stats: { kept, updated, added } };
 }
 
 /* ============================================================
@@ -137,11 +301,7 @@ export async function readAlbums() {
   const viewerDir = getViewerDir();
   try {
     const raw = await fs.readFile(path.join(viewerDir, 'js', 'albums.js'), 'utf8');
-    // 跳过 /* ... */ 注释,匹配第一个真正的赋值
-    const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '');
-    const m = stripped.match(/(?:^|\n)\s*(?:window\.)?ALBUMS\s*=\s*(\{[\s\S]*?\n\});/);
-    if (!m) return { _meta: [] };
-    return (0, eval)('(' + m[1] + ')');
+    return safeParseObject(raw, 'ALBUMS');
   } catch (e) {
     if (e.code === 'ENOENT') return { _meta: [] };
     throw e;
@@ -172,6 +332,53 @@ export async function writeAlbums(doc) {
   const body = `window.ALBUMS = ${JSON.stringify(out, null, 2)};\n`;
   await fs.writeFile(path.join(viewerDir, 'js', 'albums.js'), ALBUMS_HEADER + body, 'utf8');
   return { ok: true, metaCount: meta.length, imageCount: Object.keys(sortedMap).length };
+}
+
+/**
+ * 校验 albums 文档结构,失败抛错(含具体原因)
+ * 规则:
+ *   - 必须是普通对象
+ *   - _meta 必须是数组
+ *   - 每条 meta: id (1-64 字符串)、name (非空 trim 字符串)
+ *   - 其它顶层 key 必须是 string(url)→ string(metaIds 里的 id)
+ * @throws 若不合法
+ */
+export function validateAlbumsDoc(doc) {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+    throw new Error('body 必须是普通对象');
+  }
+  if (!Array.isArray(doc._meta)) {
+    throw new Error('_meta 必须是数组');
+  }
+  const metaIds = new Set();
+  doc._meta.forEach((a, i) => {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) {
+      throw new Error(`_meta[${i}] 必须是对象`);
+    }
+    if (typeof a.id !== 'string' || a.id.length < 1 || a.id.length > 64) {
+      throw new Error(`_meta[${i}].id 必须是 1-64 字符的字符串`);
+    }
+    if (typeof a.name !== 'string' || a.name.trim().length === 0) {
+      throw new Error(`_meta[${i}].name 必须是非空字符串`);
+    }
+    if (metaIds.has(a.id)) {
+      throw new Error(`_meta[${i}].id 重复: ${a.id}`);
+    }
+    metaIds.add(a.id);
+  });
+
+  for (const [k, v] of Object.entries(doc)) {
+    if (k === '_meta') continue;
+    if (typeof k !== 'string' || k.length === 0) {
+      throw new Error(`顶层 key "${k}" 必须是 string`);
+    }
+    if (typeof v !== 'string') {
+      throw new Error(`url "${k}" 的映射值必须是 string(id),实际 ${typeof v}`);
+    }
+    if (!metaIds.has(v)) {
+      throw new Error(`url "${k}" 映射到不存在的图集 id: ${v}`);
+    }
+  }
 }
 
 /**

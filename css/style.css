@@ -67,6 +67,32 @@ body {
 }
 
 /* ============================================================
+ * 2.5 错误提示横条(上游不可达时短暂显示)
+ * ============================================================ */
+.error-banner {
+  position: sticky;
+  top: 60px;                /* 紧贴 navbar 下方 */
+  z-index: 49;              /* 比 navbar 低 1,不遮挡顶栏 */
+  margin: 0;
+  padding: 10px 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: rgba(180, 30, 50, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: errorBannerIn 0.3s ease forwards;
+  transition: opacity 0.4s ease;
+}
+.error-banner-fade { opacity: 0; }
+
+@keyframes errorBannerIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
  * 3. 标题区 / 页脚
  * ============================================================ */
 

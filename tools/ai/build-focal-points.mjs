@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 import {
   readViewerConfig,
   writeFocalPoints,
+  readFocalPoints,
+  mergeFocalPoints,
   readLocalSecret,
   getByPath,
 } from '../server/lib/config-reader.mjs';
@@ -262,8 +264,13 @@ async function main() {
   await faceapi.nets.faceLandmark68Net.loadFromDisk(WEIGHTS);
   log('✅', '模型就绪');
 
-  // 4. 逐张检测(并发)
-  const focal = {};
+  // 4. 读取已有的焦点数据(保留人工标注,不被 AI 覆盖)
+  const existing = await readFocalPoints();
+  const existingCount = Object.keys(existing).length;
+  log('📂', `已读取 viewer/js/focal-points.js (${existingCount} 项,将被保留/合并)`);
+
+  // 4. 逐张检测(并发) — 本轮新检出的存到 detected,最后再 merge
+  const detected = {};
   let analyzed = 0;
   let failed = 0;
 
@@ -308,7 +315,7 @@ async function main() {
 
       const imgW = detections[0].imageWidth;
       const imgH = detections[0].imageHeight;
-      focal[it.url] = {
+      detected[it.url] = {
         x: round(box.x / imgW, 3),
         y: round(box.y / imgH, 3),
       };
@@ -325,9 +332,17 @@ async function main() {
 
   log('📈', `检测结果: ${analyzed} 张有人脸,${failed} 张失败,${items.length - analyzed - failed} 张无人脸`);
 
-  // 5. 写文件
-  await writeFocalPoints(focal);
-  log('💾', `已写入 viewer/js/focal-points.js(${Object.keys(focal).length} 项)`);
+  // 5. 合并:已有的人工标注 + 本轮新检测结果(mergeFocalPoints 在 config-reader.mjs)
+  //    - AI 检测到且已有 → 用 AI 的(更新)
+  //    - AI 未检测到但已有 → 保留旧值(绝不覆盖人工标注)
+  //    - AI 新检出的 → 新增
+  const { merged, stats } = mergeFocalPoints(existing, detected);
+
+  log('🔀', `合并结果: 保留旧值 ${stats.kept} / 更新 ${stats.updated} / 新增 ${stats.added}`);
+
+  // 6. 写文件
+  await writeFocalPoints(merged);
+  log('💾', `已写入 viewer/js/focal-points.js(${Object.keys(merged).length} 项)`);
   log('🎉', '完成');
 }
 

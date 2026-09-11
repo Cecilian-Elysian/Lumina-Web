@@ -27,6 +27,7 @@
 
 const UPSTREAM_BASE = 'https://7bu.top/api/v1/images';
 const PER_PAGE_HARD_MAX = 40; // 图床单页硬上限,超过会被截断
+const LAST_PAGE_WARN_THRESHOLD = 10; // 分页数 > 此值时仅记录警告(不打图床)
 
 // Pages Functions 约定导出：onRequest 处理所有方法的请求
 export async function onRequest(context) {
@@ -67,7 +68,17 @@ export async function onRequest(context) {
 
     const firstRes = await fetch(firstUrl, { headers: upstreamHeaders });
     if (!firstRes.ok) {
-      // 透传 4xx/5xx 状态码,便于排查
+      // upstream 返回错误:检查 content-type
+      // 若非 JSON(例如 HTML 错误页/CDN 拦截),包装成结构化 JSON 错误返回
+      // 否则透传原始响应
+      const ct = firstRes.headers.get('content-type') || '';
+      if (!ct.toLowerCase().includes('application/json')) {
+        return json(firstRes.status, {
+          status: false,
+          message: `上游返回非 JSON 响应 (HTTP ${firstRes.status}, content-type: ${ct || 'unknown'})`,
+          data: {},
+        });
+      }
       return new Response(firstRes.body, {
         status: firstRes.status,
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -78,6 +89,15 @@ export async function onRequest(context) {
     const items = Array.isArray(innerData.data) ? innerData.data.slice() : [];
     const total = Number(innerData.total) || items.length;
     const lastPage = Number(innerData.last_page) || 1;
+
+    // 软警告:图床分页过多时记录到控制台(便于运维发现)
+    // 不阻止拉取 — 用户明确选了"不限制",但留个 visibility
+    if (lastPage > LAST_PAGE_WARN_THRESHOLD) {
+      console.warn(
+        `[Lumina images] 图床分页较多: last_page=${lastPage}, total=${total}` +
+        ` — 会瞬时并发 ${lastPage - 1} 个请求,建议将图床图片数量控制在 ${PER_PAGE_HARD_MAX * LAST_PAGE_WARN_THRESHOLD} 以内`
+      );
+    }
 
     // 单页就能装下 → 包装成图床原始三段式返回
     if (lastPage <= 1) {

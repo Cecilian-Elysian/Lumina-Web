@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* ============================================================
- * Lumina 焦点管理器 — 启动器 + HTTP 服务器
+ * Lumina 编辑器 — 启动器 + HTTP 服务器
  * ------------------------------------------------------------
  * 双击 tools/start.bat 即调用本文件,职责:
  *   1. 检查 Node.js 版本(≥18)
@@ -47,6 +47,7 @@ import {
   readLocalSecret,
   readAlbums,
   writeAlbums,
+  validateAlbumsDoc,
   addAlbum,
   renameAlbum,
   deleteAlbum,
@@ -282,9 +283,31 @@ function wrapUpstream(items, innerData) {
 }
 
 function readBody(req) {
+  // 1MB 上限(albums 实际几 KB,focal 几 KB — 1MB 已足够)
+  // 防攻击者 POST 大文件把 Node 进程 OOM
+  const MAX = 1024 * 1024;
+
   return new Promise((resolve, reject) => {
+    // 0. Content-Length 预先检查(防攻击者发正常 Content-Length 但持续灌数据)
+    const declared = parseInt(req.headers['content-length'] || '0', 10);
+    if (Number.isFinite(declared) && declared > MAX) {
+      req.destroy();
+      reject(new Error('Payload too large (Content-Length=' + declared + ' > ' + MAX + ')'));
+      return;
+    }
+
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    let total = 0;
+    req.on('data', (c) => {
+      total += c.length;
+      // 1. 累计字节保险(防止 Content-Length 被伪造或缺失)
+      if (total > MAX) {
+        req.destroy();
+        reject(new Error('Payload too large (累计 > ' + MAX + ' bytes)'));
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
@@ -504,16 +527,15 @@ async function handle(req, res, url) {
     const body = await readBody(req);
     try {
       const doc = JSON.parse(body);
-      if (!doc || typeof doc !== 'object' || !Array.isArray(doc._meta)) {
-        throw new Error('body 必须是 { _meta: [...], ... }');
-      }
+      // 字段级校验:类型、长度、id 存在性等
+      validateAlbumsDoc(doc);
       const r = await writeAlbums(doc);
       log('💾', `写入 albums.js (meta=${r.metaCount}, images=${r.imageCount})`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, ...r }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'JSON 解析失败:' + e.message }));
+      res.end(JSON.stringify({ ok: false, error: e.message }));
     }
     return;
   }
@@ -583,7 +605,7 @@ const server = http.createServer(async (req, res) => {
 
 // ── 启动入口 ─────────────────────────────────────
 async function bootstrap() {
-  log('✨', 'Lumina 焦点管理器启动中...');
+  log('✨', 'Lumina 编辑器启动中...');
   checkNode();
   await ensureManager();
   await ensureDeps();
@@ -593,7 +615,7 @@ async function bootstrap() {
 
   // 服务器端口(用实际分配到的)
   const actualServer = server.listen(port, '127.0.0.1', () => {
-    log('✨', `Lumina 焦点管理器已启动`);
+    log('✨', `Lumina 编辑器已启动`);
     log('🌐', `编辑器: ${url}`);
     log('📂', `tools/    = ${TOOLS}`);
     log('📂', `manager/  = ${MANAGER}`);
