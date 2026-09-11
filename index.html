@@ -69,24 +69,28 @@
   -->
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="图片预览">
     <!-- 关闭按钮：aria-label 供屏幕阅读器朗读按钮用途 -->
-    <button id="lb-close" class="lb-btn lb-close" aria-label="关闭预览" title="关闭 (Esc)">&#215;</button>
-    <!-- 上一张箭头（&#8249; 是 ‹ 字符） -->
-    <button id="lb-prev" class="lb-btn lb-prev" aria-label="上一张" title="上一张 (&#8592;)">&#8249;</button>
+    <button id="lb-close" class="lb-btn lb-close" aria-label="关闭预览" title="关闭 (Esc)">×</button>
+    <!-- 上一张箭头（‹ 是 ‹ 字符） -->
+    <button id="lb-prev" class="lb-btn lb-prev" aria-label="上一张" title="上一张 (←)">‹</button>
     <!-- 大图：alt 由 JS 动态填入图片名 -->
     <img id="lb-img" class="lb-img" alt="">
     <!-- 下一张箭头 -->
-    <button id="lb-next" class="lb-btn lb-next" aria-label="下一张" title="下一张 (&#8594;)">&#8250;</button>
+    <button id="lb-next" class="lb-btn lb-next" aria-label="下一张" title="下一张 (→)">›</button>
     <!-- 底部说明：显示 "3 / 60" 计数与图片名 -->
     <p id="lb-caption" class="lb-caption"></p>
   </div>
 
   <!-- 配置文件必须先于主逻辑加载（main.js 依赖全局 CONFIG） -->
-  <script src="js/config.js"></script>
+  <script src="js/config.js" defer></script>
+  <!-- 共享模块（utils / api / lightbox，main.js 复用） -->
+  <script src="js/shared/utils.js" defer></script>
+  <script src="js/shared/api.js" defer></script>
+  <script src="js/shared/lightbox.js" defer></script>
   <!-- 统一导航栏注入（defer 保证在 DOM 就绪后执行） -->
   <script src="js/navbar.js" defer></script>
   <!-- 焦点数据 + 运行时（必须在 main.js 之前，定义全局 FOCAL_POINTS / FocalRuntime） -->
-  <script src="js/focal-points.js"></script>
-  <script src="js/focal-runtime.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/focal-points.js" defer></script>
+  <script src="js/focal-runtime.js" defer></script>
+  <script src="js/main.js" defer></script>
 </body>
 </html>

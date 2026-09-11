@@ -64,19 +64,23 @@
 
   <!-- ========== 灯箱（复用主页结构） ========== -->
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="图片预览">
-    <button id="lb-close" class="lb-btn lb-close" aria-label="关闭预览" title="关闭 (Esc)">&#215;</button>
-    <button id="lb-prev"  class="lb-btn lb-prev"  aria-label="上一张" title="上一张 (←)">&#8249;</button>
+    <button id="lb-close" class="lb-btn lb-close" aria-label="关闭预览" title="关闭 (Esc)">×</button>
+    <button id="lb-prev"  class="lb-btn lb-prev"  aria-label="上一张" title="上一张 (←)">‹</button>
     <img id="lb-img" class="lb-img" alt="">
-    <button id="lb-next"  class="lb-btn lb-next"  aria-label="下一张" title="下一张 (→)">&#8250;</button>
+    <button id="lb-next"  class="lb-btn lb-next"  aria-label="下一张" title="下一张 (→)">›</button>
     <p id="lb-caption" class="lb-caption"></p>
   </div>
 
+  <!-- 共享模块（utils / api / lightbox，gallery.js 复用） -->
+  <script src="js/shared/utils.js" defer></script>
+  <script src="js/shared/api.js" defer></script>
+  <script src="js/shared/lightbox.js" defer></script>
   <!-- 统一导航栏注入（defer 保证在 DOM 就绪后执行） -->
   <script src="js/navbar.js" defer></script>
   <!-- 脚本：albums → album-runtime → config → gallery（依赖顺序不可换） -->
-  <script src="js/albums.js"></script>
-  <script src="js/album-runtime.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/gallery.js"></script>
+  <script src="js/albums.js" defer></script>
+  <script src="js/album-runtime.js" defer></script>
+  <script src="js/config.js" defer></script>
+  <script src="js/gallery.js" defer></script>
 </body>
 </html>

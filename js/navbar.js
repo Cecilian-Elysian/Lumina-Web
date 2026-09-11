@@ -8,33 +8,33 @@
 (function () {
   'use strict';
 
-  var LINKS = [
+  const LINKS = [
     { href: 'index.html',   text: '主页' },
     { href: 'gallery.html', text: '图集' },
     { href: '#settings',    text: '设置' }
   ];
 
   /* 当前文件名 → 应高亮的链接下标（404 等页面无高亮） */
-  var ACTIVE_MAP = {
+  const ACTIVE_MAP = {
     'index.html':   0,
     'gallery.html': 1
   };
 
   function currentPage() {
-    var name = location.pathname.split('/').pop();
+    const name = location.pathname.split('/').pop();
     return name || 'index.html';
   }
 
   function inject() {
     if (document.querySelector('.navbar')) return; /* 已有导航则不重复 */
 
-    var active = ACTIVE_MAP[currentPage()];
-    var navLinks = LINKS.map(function (link, i) {
+    const active = ACTIVE_MAP[currentPage()];
+    const navLinks = LINKS.map(function (link, i) {
       return '<a href="' + link.href + '" class="navbar-link' +
              (i === active ? ' active' : '') + '">' + link.text + '</a>';
     }).join('');
 
-    var header = document.createElement('header');
+    const header = document.createElement('header');
     header.className = 'navbar';
     header.innerHTML =
       '<div><h1 class="navbar-title">Lumina-Web</h1></div>' +

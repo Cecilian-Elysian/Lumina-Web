@@ -2,90 +2,32 @@
  * 光影画廊 (gallery.html) — 主逻辑
  * ------------------------------------------------------------
  * 图集模式:
- *   1. loadImages()      拉取图片列表(图床 API → 兜底图)
- *   2. buildAlbums()     按 ALBUMS._meta + url 映射聚合图集
- *                        未分配 url 归入末尾"未分组"
- *   3. renderGalleries() 渲染网格
- *   4. initSearch()      启用搜索框(图集名大小写不敏感匹配)
- *   5. initLightbox()    复用灯箱(点击卡片打开相册内图片)
+ *   1. LuminaAPI.loadImages()   拉取图片列表(图床 API → 兜底图)
+ *   2. buildAlbums()            按 ALBUMS._meta + url 映射聚合图集
+ *                               未分配 url 归入末尾"未分组"
+ *   3. renderGalleries()        渲染网格
+ *   4. initSearch()             启用搜索框(图集名大小写不敏感匹配)
+ *   5. LuminaLightbox.create()  复用灯箱(点击卡片打开相册内图片)
  *
- * 依赖:js/album-runtime.js 需先于本文件加载(暴露 AlbumRuntime)
- *      js/albums.js 提供 window.ALBUMS
+ * 依赖(由 gallery.html 按顺序加载):
+ *   js/shared/utils.js     → window.LuminaShared
+ *   js/shared/api.js       → window.LuminaAPI
+ *   js/shared/lightbox.js  → window.LuminaLightbox
+ *   js/albums.js          → window.ALBUMS
+ *   js/album-runtime.js   → window.AlbumRuntime
+ *   js/config.js          → window.CONFIG
  * ============================================================ */
 
 (function () {
   'use strict';
 
-  // ───────────────────────────────────────────────
-  // 工具
-  // ───────────────────────────────────────────────
+  const { escapeHtml, debounce } = window.LuminaShared;
 
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function getByPath(obj, path) {
-    return path
-      .split('.')
-      .reduce((cur, key) => (cur == null ? undefined : cur[key]), obj);
-  }
-
-  function debounce(fn, wait) {
-    let timer = null;
-    return function () {
-      const args = arguments;
-      clearTimeout(timer);
-      timer = setTimeout(() => fn.apply(null, args), wait);
-    };
-  }
-
-  // ───────────────────────────────────────────────
-  // 数据加载:同 main.js 的 loadImages 子集,只取 url/name
-  // ───────────────────────────────────────────────
-
-  async function loadImages() {
-    let url, headers;
-
-    if (CONFIG.mode === 'proxy') {
-      url = '/api/images?per_page=' + CONFIG.perPage + '&_t=' + Date.now();
-      headers = { Accept: 'application/json' };
-    } else {
-      if (!CONFIG.apiBase || !CONFIG.token) {
-        return CONFIG.fallbackImages.map((u) => ({ url: u, name: '' }));
-      }
-      url = CONFIG.apiBase + CONFIG.listPath +
-            '?order=newest&per_page=' + CONFIG.perPage;
-      const h = { Accept: 'application/json' };
-      if (CONFIG.authType === 'bearer') h.Authorization = 'Bearer ' + CONFIG.token;
-      else if (CONFIG.authType === 'header') h[CONFIG.authKey] = CONFIG.tokenPrefix + CONFIG.token;
-      headers = h;
-    }
-
-    try {
-      const res = await fetch(url, { headers });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const json = await res.json();
-      const arr = getByPath(json, CONFIG.imgField);
-      if (!Array.isArray(arr) || arr.length === 0) {
-        throw new Error('imgField 未命中数组');
-      }
-      return arr
-        .map((item) => ({
-          url: getByPath(item, CONFIG.imgUrlField),
-          name: (CONFIG.imgNameField && getByPath(item, CONFIG.imgNameField)) || '',
-        }))
-        .filter((it) => it.url)
-        .slice(0, CONFIG.perPage);
-    } catch (e) {
-      console.warn('[Lumina gallery] 图片列表拉取失败,使用兜底图:', e.message);
-      return CONFIG.fallbackImages.map((u) => ({ url: u, name: '' }));
-    }
-  }
+  // 当前渲染的相册列表(供点击灯箱时反查 data-index)
+  let currentAlbums = [];
+  let allAlbums = [];
+  // 灯箱实例
+  let lb = null;
 
   // ───────────────────────────────────────────────
   // 图集聚合
@@ -153,9 +95,6 @@
   // 渲染
   // ───────────────────────────────────────────────
 
-  // 当前渲染的相册列表(供点击灯箱时反查 data-index)
-  let currentAlbums = [];
-
   function renderGalleries(albums) {
     currentAlbums = albums;
     const grid = document.getElementById('gallery-grid');
@@ -197,8 +136,6 @@
   // 搜索
   // ───────────────────────────────────────────────
 
-  let allAlbums = [];
-
   function filterAlbums(query) {
     const q = (query || '').trim().toLowerCase();
     if (!q) return allAlbums;
@@ -228,18 +165,20 @@
   }
 
   // ───────────────────────────────────────────────
-  // 灯箱
+  // 灯箱触发
   // ───────────────────────────────────────────────
 
-  let gallery = [];
-  let current = 0;
-  let lbEl, lbImg, lbCaption;
-
   function initLightbox() {
-    lbEl      = document.getElementById('lightbox');
-    lbImg     = document.getElementById('lb-img');
-    lbCaption = document.getElementById('lb-caption');
+    lb = window.LuminaLightbox.create({
+      lbEl: document.getElementById('lightbox'),
+      lbImg: document.getElementById('lb-img'),
+      lbCaption: document.getElementById('lb-caption'),
+      lbClose: document.getElementById('lb-close'),
+      lbPrev: document.getElementById('lb-prev'),
+      lbNext: document.getElementById('lb-next'),
+    });
 
+    // 点击卡片 → 用该图集的图片作为画廊,从头开始
     document.getElementById('gallery-grid').addEventListener('click', (e) => {
       const card = e.target.closest('.gallery-card');
       if (!card) return;
@@ -247,11 +186,10 @@
       const album = currentAlbums[idx];
       if (!album) return;
       const imgs = (album.images && album.images.length > 0) ? album.images : [album.cover];
-      gallery = imgs.map((url) => ({ url, name: album.name }));
-      openLightbox(0);
+      lb.open(imgs.map((url) => ({ url, name: album.name })), 0);
     });
 
-    // 键盘回车 / 空格
+    // 键盘 Enter / Space 触发卡片
     document.getElementById('gallery-grid').addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       const card = e.target.closest('.gallery-card');
@@ -259,46 +197,6 @@
       e.preventDefault();
       card.click();
     });
-
-    document.getElementById('lb-close').addEventListener('click', closeLightbox);
-    document.getElementById('lb-prev').addEventListener('click', () => show(current - 1));
-    document.getElementById('lb-next').addEventListener('click', () => show(current + 1));
-
-    lbEl.addEventListener('click', (e) => {
-      if (e.target === lbEl) closeLightbox();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (lbEl.classList.contains('hidden')) return;
-      if (e.key === 'ArrowLeft') show(current - 1);
-      if (e.key === 'ArrowRight') show(current + 1);
-      if (e.key === 'Escape') closeLightbox();
-    });
-  }
-
-  function openLightbox(idx) {
-    show(idx);
-    lbEl.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-  }
-
-  function show(idx) {
-    const total = gallery.length;
-    if (total === 0) return;
-    current = ((idx % total) + total) % total;
-    const img = gallery[current];
-    lbImg.classList.add('lb-loading');
-    lbImg.onload = lbImg.onerror = () => lbImg.classList.remove('lb-loading');
-    lbImg.src = img.url;
-    if (lbImg.complete) lbImg.classList.remove('lb-loading');
-    lbImg.alt = img.name || '图片 ' + (current + 1);
-    lbCaption.textContent = (current + 1) + ' / ' + total +
-      (img.name ? ' · ' + img.name : '');
-  }
-
-  function closeLightbox() {
-    lbEl.classList.add('hidden');
-    document.body.style.overflow = '';
   }
 
   // ───────────────────────────────────────────────
@@ -306,7 +204,9 @@
   // ───────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', async () => {
-    const images = await loadImages();
+    initLightbox(); // 先建,后用
+
+    const images = await window.LuminaAPI.loadImages();
     let albums = buildAlbums(images);
 
     // 兜底:若图集模式一条都没聚合出,且 CONFIG.galleries 有数据 → 用旧版相册
@@ -317,7 +217,6 @@
     allAlbums = albums;
     renderGalleries(albums);
     initSearch();
-    initLightbox();
 
     const input = document.getElementById('search-input');
     if (input) input.disabled = false;
