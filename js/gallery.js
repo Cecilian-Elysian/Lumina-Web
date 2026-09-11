@@ -110,8 +110,7 @@
 
     grid.innerHTML = albums.map((album, i) => (
       '<article class="gallery-card' + (album.unassigned ? ' is-uncategorized' : '') +
-        '" data-index="' + i + '" tabindex="0"' +
-        ' style="animation-delay: ' + (Math.min(i, 20) * 35) + 'ms">' +
+        '" data-index="' + i + '" tabindex="0">' +
         '<img src="' + escapeHtml(album.cover) + '"' +
           ' alt="' + escapeHtml(album.name) + '"' +
           ' loading="lazy" decoding="async">' +
