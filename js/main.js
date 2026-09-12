@@ -25,10 +25,18 @@
   // 当前墙上图片序列(供灯箱 ←/→ 切换,跨行随机后)
   let gallery = [];
 
+  // 1x1 透明 GIF,作 <img> 占位 src 避免空 src 触发对当前页 URL 的请求
+  const PLACEHOLDER_IMG =
+    'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+  // 单图加载超时(超时后强制 is-loaded,避免某张卡死整队)
+  const PER_IMAGE_TIMEOUT = 5000;
+
   /**
    * 渲染图片墙:按 CONFIG.rows 生成 N 行轨道
-   * 行为:跨行随机打乱成队列 → 一张一张串行加载 → 每张 fade-in-up →
-   *      全部加载完 → 克隆副本做无缝循环 → .wall.ready 启动滚动动画
+   * 行为:全量预创建占位卡片(轨道宽度立刻固定 → 后续加载不再挤压) →
+   *      跨行随机队列,一张一张串行替换占位 src → 全部加载完 →
+   *      克隆副本做无缝循环 → .wall.ready 启动滚动动画。
    *
    * @param {Array<{url:string,name:string,thumb:string,srcset:string}>} images
    */
@@ -53,7 +61,7 @@
       const track = document.createElement('div');
       track.className = 'row-track';
 
-      // 方向交替:偶数行正向,奇数行反向
+      // 方向交替:偶数行正向,奇行反向
       track.style.animationDirection = (r % 2 === 1) ? 'reverse' : 'normal';
       // 各行速度错开(基准 40s,每行 +6s),流动更自然
       track.style.animationDuration = (40 + r * 6) + 's';
@@ -75,20 +83,16 @@
       shuffle(slices[r]);
     }
 
-    /* ---- 4. 跨行打乱成加载队列(随机行顺序)---- */
-    const queue = [];
+    /* ---- 4. 全量预创建占位卡片(关键:轨道宽度立刻固定,后续加载不再挤压)---- */
+    const allEntries = [];
     for (let r = 0; r < rowCount; r++) {
-      slices[r].forEach((img) => {
-        queue.push({
-          row: r,
-          data: img,
-          // shuffled.indexOf = 在 shuffled 中的位置 = gallery 索引
-          // 灯箱点击用此值定位 gallery[] 中的图
-          globalIndex: shuffled.indexOf(img),
-        });
+      slices[r].forEach((img, rowIdx) => {
+        const globalIndex = shuffled.indexOf(img);
+        const card = createPlaceholderCard(img, globalIndex);
+        rows[r].track.appendChild(card);
+        allEntries.push({ row: r, rowIdx, data: img, globalIndex, card });
       });
     }
-    shuffle(queue);
 
     /* ---- 5. 兜底:30 秒后无论加载进度如何,强制进入滚动 ---- */
     const finalize = () => finalizeWall(wall, rows, rowCount);
@@ -99,9 +103,10 @@
       }
     }, 30000);
 
-    /* ---- 6. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
-    for (const item of queue) {
-      await loadOneImage(item, rows[item.row]);
+    /* ---- 6. 跨行打乱成加载队列(随机行顺序)→ 串行替换占位 ---- */
+    const queue = shuffle(allEntries.slice());
+    for (const entry of queue) {
+      await loadImageInto(entry);
     }
     clearTimeout(safetyTimer);
     finalize();
@@ -128,17 +133,13 @@
   }
 
   /**
-   * 顺序加载一张图片到指定行,完成后 resolve。
+   * 顺序加载一张图片到已建好的占位卡片,完成后 resolve。
    * 等图真的解码完成(img.complete + naturalWidth)才继续,
    * 失败/超时也 resolve 以免阻塞整个队列。
    */
-  function loadOneImage(item, rowEl) {
+  function loadImageInto(entry) {
     return new Promise((resolve) => {
-      const card = createCard(item);
-      const img = card.querySelector('img');
-      if (img) img.classList.add('is-loading');
-      rowEl.track.appendChild(card);
-
+      const img = entry.card.querySelector('img');
       if (!img) { resolve(); return; }
 
       let done = false;
@@ -150,34 +151,44 @@
         resolve();
       };
 
+      // 真实 src/srcset 替换占位(浏览器立即开始请求)
+      img.srcset = entry.data.srcset;
+      img.src = entry.data.thumb;
+
+      // 焦点注入(无数据时 focal-runtime.js 不做任何操作)
+      if (window.FocalRuntime && typeof window.FocalRuntime.applyTo === 'function') {
+        window.FocalRuntime.applyTo(img, img.getAttribute('src'));
+      }
+
       if (img.complete && img.naturalWidth > 0) {
         finish();
       } else {
         img.addEventListener('load', finish, { once: true });
         img.addEventListener('error', () => {
-          console.warn('[Lumina] loadOneImage error:', img.currentSrc || img.src);
+          console.warn('[Lumina] loadImageInto error:', img.currentSrc || img.src);
           finish();
         }, { once: true });
-        setTimeout(finish, 5000); // 超时兜底
+        setTimeout(finish, PER_IMAGE_TIMEOUT); // 超时兜底
       }
     });
   }
 
   /**
-   * 创建一张卡片(DOM 方式,无需 HTML 转义)。
-   * loading="eager" 由我们控制顺序,lazy 反而坏事。
+   * 创建占位卡片:<img> 用 1x1 透明 GIF 占位(is-loading)
+   * 真实 src/srcset 由 loadImageInto 在加载时替换。
+   * 这样卡片一开始就占好位置,轨道宽度立即固定,避免后续插入造成挤压。
    */
-  function createCard(item) {
+  function createPlaceholderCard(item, globalIndex) {
     const figure = document.createElement('figure');
     figure.className = 'card';
-    figure.dataset.index = item.globalIndex;
+    figure.dataset.index = globalIndex;
 
     const img = document.createElement('img');
-    img.src = item.data.thumb;
-    img.srcset = item.data.srcset;
-    img.alt = item.data.name || '图片';
+    img.src = PLACEHOLDER_IMG;
+    img.alt = item.name || '图片';
     img.loading = 'eager';
     img.decoding = 'async';
+    img.classList.add('is-loading');
 
     // 加载失败时:
     //   1. 打日志排查(记录 name / thumb / url / 实际失败的 src)
@@ -185,10 +196,13 @@
     //      避免 Retina 屏因原图 404 显示破碎图
     img.addEventListener('error', function onImgError() {
       const failedSrc = img.currentSrc || img.src;
+      // 占位 src 失败(理论不会发生)直接跳过
+      if (failedSrc === PLACEHOLDER_IMG) return;
+
       console.warn('[Lumina] 图片加载失败', {
-        name: item.data.name,
-        thumb: item.data.thumb,
-        url: item.data.url,
+        name: item.name,
+        thumb: item.thumb,
+        url: item.url,
         failedSrc,
       });
 
@@ -196,21 +210,15 @@
       if (img.dataset.fallbackDone === 'true') return;
 
       // 失败的是 2x 原图 → 回退到 thumb
-      if (item.data.thumb && failedSrc === item.data.url) {
+      if (item.thumb && failedSrc === item.url) {
         console.warn('[Lumina] 2x 原图 404,回退到 thumb');
         img.dataset.fallbackDone = 'true';
         img.srcset = ''; // 关掉 srcset,避免再次选 2x
-        img.src = item.data.thumb;
+        img.src = item.thumb;
       }
     });
 
     figure.appendChild(img);
-
-    // 焦点注入(无数据时 focal-runtime.js 不做任何操作)
-    if (window.FocalRuntime && typeof window.FocalRuntime.applyTo === 'function') {
-      window.FocalRuntime.applyTo(img, img.getAttribute('src'));
-    }
-
     return figure;
   }
 

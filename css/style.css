@@ -210,15 +210,6 @@ body {
 .wall {
   flex: 1;
   padding-top: 25px; /* 导航栏与图片展示的间隔*/
-  /* 整墙淡入:页面打开后整个 wall 先淡入,内部卡片再各自淡入,
-   * 形成"先外层后内层"的开屏节奏(类似 PageTransition 的整体入场) */
-  animation: wallFadeIn 0.6s ease-out forwards;
-}
-
-/* 整墙淡入的关键帧(独立定义,避免和 .wall 块耦合) */
-@keyframes wallFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 
 /* 行：只露出本行内容，超出部分隐藏（滚动窗口） */
@@ -265,22 +256,6 @@ body {
 .row:hover .row-track { animation-play-state: paused; }
 
 /* ============================================================
- * 加载动画:每张图从下方 32px 淡入(更明显的开屏动画)
- * 复用 Cecilian-Hub PageTransition 的视觉效果(y:20 → 0)
- * ============================================================ */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(32px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.card img.is-loading {
-  opacity: 0;
-  transform: translateY(32px);
-}
-.card img.is-loaded {
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* ============================================================
  * 5. 卡片与悬停效果
  * ============================================================ */
 
@@ -289,6 +264,10 @@ body {
   /* 宽度取 main.js 注入的 --card-w 变量（config.js 的 cardWidth） */
   flex: 0 0 var(--card-w, 300px);
   cursor: pointer;                  /* 提示可点击 */
+  /* 占位骨架:img 是 1x1 透明 gif,本身不可见,
+   * .card 的 background 透出来形成"深灰占位卡" */
+  background: #23262c;
+  border-radius: var(--card-radius);
 }
 
 .card img {
