@@ -10,8 +10,8 @@
  *
  * 加载策略(优化版):
  *   - 全量预创建占位卡片(立即插入轨道,轨道宽度立刻固定 → 滚动基准稳定,不再挤压)
- *   - 串行加载:一张加载完才下一张,每张 fade-in-up
- *   - 全部加载完 → 克隆副本做无缝循环 + 启动滚动
+ *   - 首批优先:每行最左侧 FIRST_BATCH_PER_ROW 张图并发加载,加载完 + 最小等待时间到 → 启动滚动
+ *   - 后续图片后台并发加载(CONCURRENCY),加载完一张显示一张(不影响轨道宽度)
  *
  * 依赖(由 index.html 按顺序加载):
  *   js/config.js          → window.CONFIG(渲染行数 / 卡片宽度等)
@@ -31,6 +31,12 @@
   let gallery = [];
 
   // ─── 加载策略参数 ───
+  // 每行首批优先加载的张数(控制首屏可见区)
+  const FIRST_BATCH_PER_ROW = 4;
+  // 首批加载完后,再多等这些毫秒才启动滚动(让 fade-in-up 有过渡时间,视觉更自然)
+  const FIRST_BATCH_MIN_MS = 600;
+  // 后续图片后台并发数(避免一次性并发过多挤占浏览器连接/CPU)
+  const CONCURRENCY = 6;
   // 单图加载超时(超时后强制 is-loaded,避免某张卡死整队)
   const PER_IMAGE_TIMEOUT = 3000;
 
@@ -40,9 +46,9 @@
 
   /**
    * 渲染图片墙:按 CONFIG.rows 生成 N 行轨道
-   * 行为:全量预创建占位卡(轨道宽度立即固定) → 串行加载每张图 →
-   *      一张加载完才下一张,每张 fade-in-up → 全部加载完 →
-   *      克隆副本做无缝循环 + 启动滚动。
+   * 行为:全量预创建占位卡(轨道宽度立即固定) → 每行前 N 张首批并发加载 →
+   *      首批就绪 + 最小等待 → 克隆副本做无缝循环 + 启动滚动 →
+   *      剩余图片后台并发加载,谁先到谁先 fade-in-up。
    *
    * @param {Array<{url:string,name:string,thumb:string,srcset:string}>} images
    */
@@ -100,9 +106,11 @@
       });
     }
 
-    /* ---- 5. 启动滚动(全部加载完)---- */
+    /* ---- 5. 启动滚动(首批图加载完 + 最小等待)---- */
+    let scrollStarted = false;
     const startScroll = () => {
-      if (wall.classList.contains('ready')) return;
+      if (scrollStarted || wall.classList.contains('ready')) return;
+      scrollStarted = true;
       rows.forEach(({ track }) => {
         const realCards = track.querySelectorAll('.card:not(.copy)');
         realCards.forEach((card) => {
@@ -114,14 +122,25 @@
         });
       });
       wall.classList.add('ready');
-      console.info('[Lumina] 全部图片加载完,启动无缝循环滚动');
+      console.info('[Lumina] 首批就绪,启动无缝循环滚动');
     };
 
-    /* ---- 6. 串行加载:一张加载完才加载下一张,每张 fade-in-up ---- */
-    for (const entry of allEntries) {
-      await loadImageInto(entry);
-    }
+    /* ---- 6. 拆分为"首批"和"后续"两份 ---- */
+    const firstBatch = allEntries.filter((e) => e.rowIdx < FIRST_BATCH_PER_ROW);
+    const restBatch = allEntries.filter((e) => e.rowIdx >= FIRST_BATCH_PER_ROW);
+
+    /* ---- 7. 并发加载首批,完成后启动滚动 ---- */
+    const minTimer = new Promise((r) => setTimeout(r, FIRST_BATCH_MIN_MS));
+    await Promise.all([
+      Promise.all(firstBatch.map(loadImageInto)),
+      minTimer,
+    ]);
     startScroll();
+
+    /* ---- 8. 后续图片后台并发加载(不阻塞,不 await)---- */
+    runWithConcurrency(restBatch, CONCURRENCY, loadImageInto).then(() => {
+      console.info('[Lumina] 全部图片加载完成');
+    });
   }
 
   /**
@@ -207,6 +226,33 @@
         img.addEventListener('error', finish, { once: true });
         setTimeout(finish, PER_IMAGE_TIMEOUT);
       }
+    });
+  }
+
+  /**
+   * 并发执行任务队列:同时最多 limit 个在跑,完成后取下一个。
+   * 返回 Promise,在全部完成时 resolve。
+   */
+  function runWithConcurrency(items, limit, fn) {
+    return new Promise((resolve) => {
+      if (items.length === 0) { resolve(); return; }
+      let idx = 0;
+      let active = 0;
+      let remaining = items.length;
+
+      const next = () => {
+        while (active < limit && idx < items.length) {
+          const item = items[idx++];
+          active++;
+          Promise.resolve(fn(item)).finally(() => {
+            active--;
+            remaining--;
+            if (remaining === 0) resolve();
+            else next();
+          });
+        }
+      };
+      next();
     });
   }
 
