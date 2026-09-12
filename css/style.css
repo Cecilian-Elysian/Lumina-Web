@@ -264,10 +264,6 @@ body {
   /* 宽度取 main.js 注入的 --card-w 变量（config.js 的 cardWidth） */
   flex: 0 0 var(--card-w, 300px);
   cursor: pointer;                  /* 提示可点击 */
-  /* 占位骨架:img 是 1x1 透明 gif,本身不可见,
-   * .card 的 background 透出来形成"深灰占位卡" */
-  background: #23262c;
-  border-radius: var(--card-radius);
 }
 
 .card img {
