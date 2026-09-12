@@ -99,12 +99,12 @@
       }
     }, 30000);
 
-    /* ---- 6. 并行加载:所有 thumb 同时拉,各卡按 globalIndex 设瀑布延迟,
-     *       全部加载完 + (最大延迟 + 0.8s 淡入 + 0.3s 暂停) → 启动滚动 ---- */
-    await Promise.all(queue.map((item) => loadOneImage(item, rows[item.row])));
+    /* ---- 6. 逐张加载:每张 decode 完才加载下一张,并触发 fade-in-up ---- */
+    for (const item of queue) {
+      await loadOneImage(item, rows[item.row]);
+    }
     clearTimeout(safetyTimer);
-    const longestDelay = (queue.length - 1) * 30; // 最后一张的延迟
-    setTimeout(finalize, longestDelay + 800 + 300); // 淡入 0.8s + 暂停 0.3s
+    finalize();
   }
 
   /**
@@ -145,8 +145,6 @@
       const finish = () => {
         if (done) return;
         done = true;
-        // 顺序瀑布:每张按 shuffled 全局索引错峰 30ms,不封顶(N 张 ≈ (N-1)*30ms 全铺完)
-        img.style.animationDelay = (item.globalIndex * 30) + 'ms';
         img.classList.remove('is-loading');
         img.classList.add('is-loaded'); // 错误也加,至少让图显示(破碎也看得见)
         resolve();
