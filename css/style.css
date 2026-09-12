@@ -289,6 +289,11 @@ body {
   /* 宽度取 main.js 注入的 --card-w 变量（config.js 的 cardWidth） */
   flex: 0 0 var(--card-w, 300px);
   cursor: pointer;                  /* 提示可点击 */
+  /* 占位骨架:图片 is-loading 时透明度为 0,
+   * .card 的 background 透出来形成"深灰占位卡",
+   * 用户在图片加载完之前就能看到卡片已就位 */
+  background: #23262c;
+  border-radius: var(--card-radius);
 }
 
 .card img {
