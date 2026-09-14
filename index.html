@@ -25,6 +25,24 @@
   <!-- 提前与图床建立 TCP/TLS 连接,首图加载提速 ~100-300ms -->
   <link rel="preconnect" href="https://7bu.top" crossorigin>
   <link rel="dns-prefetch" href="https://bu.dusays.com">
+  <!-- 预加载兜底图:浏览器解析 HTML 时就开始下载,与 JS/API 完全并行
+       ⚠️ 改了 js/config.js 的 fallbackImages 后,这里的 URL 也要同步改 -->
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/26/6a8e4886824f2.png" fetchpriority="high">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/25/6a8da73da2991.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543c1b449f.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543c13d1ba.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543c080d97.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543be8af5f.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543b4e47a6.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/05/6a72df8a995d2.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71e68e7c675.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71cd89ebd59.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543b142698.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543aec18c9.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543aec93d3.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/05/6a72e1e316838.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71ed5d3acdd.jpg">
+  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71e67ca957f.jpg">
   <!-- 页面描述（利于 SEO / 分享摘要） -->
   <meta name="description" content="流动图片墙 — 多行叠层水平流动的图片展示墙">
   <!-- 浏览器标签页标题 -->

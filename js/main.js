@@ -115,11 +115,19 @@
       finalizeWall(wall, rows, rowCount);
     }
 
-    /* ---- 8. 后台串行加载剩余图 ---- */
+    /* ---- 8. 后台并发加载剩余图 + 200ms 间隔显示 ----
+     * 浏览器原生 6 并发,总时长 ≈ 最慢那张(2-3s),而非总和(30s)。
+     * 显示完成时刻按 200ms × index 错开 → 视觉保留"一张一张出场"节奏。
+     */
     (async () => {
-      for (let i = 1; i < queue.length; i++) {
-        await loadImageInto(queue[i]);
-      }
+      const rest = queue.slice(1);
+      await Promise.all(
+        rest.map((entry, i) =>
+          loadImageInto(entry).then(
+            () => new Promise((r) => setTimeout(r, 200 * i))
+          )
+        )
+      );
       console.info('[Lumina] 全部图片加载完成');
     })();
   }
@@ -201,6 +209,9 @@
     img.loading = 'eager';
     img.decoding = 'async';
     img.classList.add('is-loading');
+
+    // 首图最高优先级:浏览器优先调度这张的下载
+    if (globalIndex === 0) img.setAttribute('fetchpriority', 'high');
 
     // 加载失败时:
     //   1. 打日志排查(记录 name / thumb / url / 实际失败的 src)
