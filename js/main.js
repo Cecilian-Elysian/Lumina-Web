@@ -95,21 +95,33 @@
     }
 
     /* ---- 5. 兜底:30 秒后无论加载进度如何,强制进入滚动 ---- */
-    const finalize = () => finalizeWall(wall, rows, rowCount);
     const safetyTimer = setTimeout(() => {
       if (!wall.classList.contains('ready')) {
         console.warn('[Lumina] 加载超时,强制启动滚动动画');
-        finalize();
+        finalizeWall(wall, rows, rowCount);
       }
     }, 30000);
 
-    /* ---- 6. 跨行打乱成加载队列(随机行顺序)→ 串行替换占位 ---- */
+    /* ---- 6. 跨行打乱成加载队列(随机行顺序)---- */
     const queue = shuffle(allEntries.slice());
-    for (const entry of queue) {
-      await loadImageInto(entry);
+
+    /* ---- 7. 串行加载首图 → 完成后立刻启动滚动(取消"满才滚")----
+     * 首张就绪即 finalize,用户立刻看到运动。
+     * 剩余图在后台 IIFE 串行入场,不阻塞、不影响滚动。
+     */
+    if (queue.length > 0) {
+      await loadImageInto(queue[0]);
+      clearTimeout(safetyTimer);
+      finalizeWall(wall, rows, rowCount);
     }
-    clearTimeout(safetyTimer);
-    finalize();
+
+    /* ---- 8. 后台串行加载剩余图 ---- */
+    (async () => {
+      for (let i = 1; i < queue.length; i++) {
+        await loadImageInto(queue[i]);
+      }
+      console.info('[Lumina] 全部图片加载完成');
+    })();
   }
 
   /**
