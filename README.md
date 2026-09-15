@@ -32,10 +32,57 @@ python -m http.server 8000
 
 ## 部署
 
-1. GitHub 仓库：%用户名%/Lumina-Web
-2. Cloudflare Pages → Connect to Git → 构建命令 `npm run build` → 输出 `dist`
-3. 环境变量 `QUBU_TOKEN` 添加到 Production 与 Preview
-4. 每次 push main 自动部署
+### ⚠️ 必须先设 Dashboard（Git 集成生效前必做）
+
+`wrangler.toml` 的 `[build] command` 仅供 `wrangler pages dev`/`wrangler pages deploy` CLI 使用；
+**Cloudflare Pages Dashboard 的 Git 集成项目会忽略它**——必须手动在 Dashboard 配置 Build command。
+
+进入 **Cloudflare Dashboard → Workers & Pages → lumina → Settings → Builds**：
+
+| 字段 | 值 |
+|---|---|
+| Framework preset | `None` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | (留空，仓库根) |
+
+然后在 **Settings → Environment variables** 添加：
+
+| 变量 | Production / Preview 都填 |
+|---|---|
+| `NODE_VERSION` | `20` |
+| `QUBU_TOKEN` | (你的图床 token) |
+
+> 没设 `NODE_VERSION` 时 CF 默认 Node 12，`npm install` 会失败；构建失败会导致页面空白。
+> 没填 `Build command` 时 CF 不跑构建，直接把仓库根当产物部署——`index.html` 里的 `<script src="/src/site/main.ts">` 会被原样 deploy，浏览器加载 `.ts` 失败（CF 默认 MIME `video/mp2t`）。
+
+### 验证
+
+```bash
+# 部署后 Network 面板检查:
+curl -I https://illusium.pages.dev/assets/main-*.js
+# 应返回 200 + Content-Type: application/javascript
+curl -s https://illusium.pages.dev/ | grep -i 'script'
+# 应输出 <script type="module" crossorigin src="/assets/main-*.js">
+# 而不是 /src/site/main.ts
+```
+
+### 备选：CLI 手动部署（绕开 Dashboard Git 集成）
+
+```bash
+npm install
+npm run build
+npx wrangler pages deploy dist --project-name=lumina --branch=main
+```
+
+需要环境变量 `CLOUDFLARE_API_TOKEN`（在 CF Dashboard → My Profile → API Tokens 创建）。
+
+### 备选：GitHub Actions 部署（仓库自带 `.github/workflows/deploy.yml`）
+
+如果不想在 CF Dashboard 设 Build command，可以走 Actions：
+1. Dashboard → Settings → Builds → Build command 设为空（或禁用 Git 集成）
+2. GitHub repo → Settings → Secrets 添加 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`
+3. 每次 push main Actions 自动 build + deploy
 
 ## 运维风险提示
 
