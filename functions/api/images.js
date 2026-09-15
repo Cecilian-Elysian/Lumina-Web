@@ -13,11 +13,12 @@
  *
  * 配置环境变量的两种方式：
  *   A. Dashboard：Pages 项目 → Settings → Environment variables
- *      → 添加 QUBU_TOKEN（Production 和 Preview 都要加）
+ *      → 添加 QUBU_TOKEN 或 TOKEN（同名兼容，二选一）
+ *      → Production 和 Preview 都要加
  *   B. CLI：npx wrangler pages secret put QUBU_TOKEN --project-name=<项目名>
  *
  * 本地开发（wrangler pages dev）：
- *   在项目根目录建 .dev.vars 文件写入 QUBU_TOKEN=xxx
+ *   在项目根目录建 .dev.vars 文件写入 QUBU_TOKEN=xxx（或 TOKEN=xxx）
  *   （.dev.vars 已加入 .gitignore，绝不会被提交）
  *
  * 分页合并：
@@ -35,17 +36,18 @@ export async function onRequest(context) {
   // context.request —— 原始请求
   const { request, env } = context;
 
-  // 读取密钥；未配置时静默返回空列表(前端会走 fallbackImages,不打扰用户)
-  // - 返回 200 + status:false 而非 500:避免前端 catch 路径误判为「上游故障」
-  // - message 里点明根因,前端 banner 会据此给出可执行的修复指引
-  const token = env.QUBU_TOKEN;
-  if (!token) {
-    return json(200, {
-      status: false,
-      message: '未配置环境变量 QUBU_TOKEN，请在 Pages 项目 Settings → Environment variables 中添加',
-      data: { data: [] },
-    });
-  }
+// 读取密钥；未配置时静默返回空列表(前端会走 fallbackImages,不打扰用户)
+// - 返回 200 + status:false 而非 500:避免前端 catch 路径误判为「上游故障」
+// - message 里点明根因,前端 banner 会据此给出可执行的修复指引
+// - 兼容两种名字:TOKEN(简短) 或 QUBU_TOKEN(语义化)
+const token = env.TOKEN || env.QUBU_TOKEN;
+if (!token) {
+  return json(200, {
+    status: false,
+    message: '未配置环境变量 QUBU_TOKEN 或 TOKEN，请在 Pages 项目 Settings → Environment variables 中添加',
+    data: { data: [] },
+  });
+}
 
   /* ---- 构造对图床上游的请求 ----
    * 只透传安全的查询参数（per_page / order），

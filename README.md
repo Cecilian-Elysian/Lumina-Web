@@ -48,10 +48,12 @@ python -m http.server 8000
 
 然后在 **Settings → Environment variables** 添加：
 
-| 变量 | Production / Preview 都填 |
-|---|---|
-| `NODE_VERSION` | `20` |
-| `QUBU_TOKEN` | (你的图床 token) |
+| 变量 | 类型 | Production / Preview 都填 |
+|---|---|---|
+| `NODE_VERSION` | Plaintext | `20` |
+| `TOKEN`（或 `QUBU_TOKEN`） | **Secret** | (你的 7bu.top Bearer token) |
+
+> `TOKEN` 和 `QUBU_TOKEN` 都接受，Dashboard 用了哪个都生效。
 
 > 没设 `NODE_VERSION` 时 CF 默认 Node 12，`npm install` 会失败；构建失败会导致页面空白。
 > 没填 `Build command` 时 CF 不跑构建，直接把仓库根当产物部署——`index.html` 里的 `<script src="/src/site/main.ts">` 会被原样 deploy，浏览器加载 `.ts` 失败（CF 默认 MIME `video/mp2t`）。
