@@ -17,7 +17,7 @@ export const CONFIG = {
   /* ---- 数据源模式 ----
    * 'proxy'  → 请求本站 /api/images 代理(token 在服务端,推荐)
    * 'direct' → 前端直连图床(token 写在下方,会暴露给浏览器) */
-  mode: 'direct',
+  mode: 'proxy',
 
   /* ---- 关闭图床 API(完全跳过 /api/images 与图床请求) ----
    * true  → 直接用 fallbackImages,不发任何网络请求,
