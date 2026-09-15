@@ -19,6 +19,13 @@ export const CONFIG = {
    * 'direct' → 前端直连图床(token 写在下方,仅调试用) */
   mode: 'proxy',
 
+  /* ---- 关闭图床 API(完全跳过 /api/images 与图床请求) ----
+   * true  → 直接用 fallbackImages,不发任何网络请求,
+   *          不弹 banner、不打 console.warn。
+   * 适合不想配 QUBU_TOKEN、只想展示兜底图的场景。
+   * 配好 token 后改回 false 即可恢复。 */
+  apiDisabled: false,
+
   /* ---- 上游图床接口(仅 direct 模式使用) ---- */
   apiBase: 'https://7bu.top/api/v1',
   listPath: '/images',
