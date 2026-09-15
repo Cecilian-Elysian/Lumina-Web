@@ -1,9 +1,8 @@
 name = "lumina"
 compatibility_date = "2024-09-23"
 
-# Vite 构建 viewer(多入口:index/gallery/404)到 dist/。
-# manager 构建到 dist-manager/(仅本机,见 package.json 的 build:manager)。
-[build]
-command = "npm run build"
-
+# Cloudflare Pages wrangler.toml — 仅 Pages 兼容字段
+# ⚠️ 不要加 [build] 块,那是 wrangler Workers 语法,
+# 会让 CF Pages 把整个文件识别为非法并 skip,导致 Build command 不生效。
+# Build command / Root directory 由 Settings → Builds 配置。
 pages_build_output_dir = "./dist"
