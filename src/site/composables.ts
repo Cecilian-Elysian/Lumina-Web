@@ -147,17 +147,28 @@ function lbOnKey(e: KeyboardEvent) {
 }
 
 /* ============================================================
- * useErrorBanner — 顶部错误横条单例(3s 自动淡出)
+ * useErrorBanner — 顶部错误横条单例
+ * ------------------------------------------------------------
+ *   - showBanner(msg)  显示 3 秒后自动淡出
+ *   - dismiss()         用户点击 ✕ 立即关闭 + 写入 localStorage
+ *   - localStorage 记忆 dismiss:同一会话内(本次浏览器)不再弹相同提示
  * ============================================================ */
+const BANNER_LS_KEY = 'lumina.banner.dismissed';
+
 const bannerState = {
   msg: ref(''),
   visible: ref(false),
   fading: ref(false),
+  /** 当前消息是否已被用户 dismiss(同一会话内不再弹) */
+  dismissed: ref(false),
 };
 
 let bannerTimer: ReturnType<typeof setTimeout> | null = null;
 
 function showBanner(msg: string) {
+  // 同消息已 dismiss → 跳过(避免每次 fetch 重试都弹)
+  if (bannerState.dismissed.value && bannerState.msg.value === msg) return;
+
   bannerState.msg.value = msg;
   bannerState.fading.value = false;
   bannerState.visible.value = true;
@@ -168,8 +179,31 @@ function showBanner(msg: string) {
   }, 3000);
 }
 
+function dismissBanner() {
+  bannerState.visible.value = false;
+  bannerState.fading.value = false;
+  bannerState.dismissed.value = true;
+  try {
+    // 仅记忆当前消息(key 用消息前缀,避免日后改文案还能命中)
+    const dismissed = JSON.parse(localStorage.getItem(BANNER_LS_KEY) || '{}');
+    dismissed[bannerState.msg.value] = true;
+    localStorage.setItem(BANNER_LS_KEY, JSON.stringify(dismissed));
+  } catch {}
+  if (bannerTimer) { clearTimeout(bannerTimer); bannerTimer = null; }
+}
+
+function resetBannerMemory() {
+  try { localStorage.removeItem(BANNER_LS_KEY); } catch {}
+  bannerState.dismissed.value = false;
+}
+
 export function useErrorBanner() {
-  return { ...bannerState, showBanner };
+  return {
+    ...bannerState,
+    showBanner,
+    dismiss: dismissBanner,
+    reset: resetBannerMemory,
+  };
 }
 
 export function useLightbox() {

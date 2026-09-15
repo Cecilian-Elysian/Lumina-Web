@@ -37,7 +37,8 @@ const banner = useErrorBanner();
   </header>
 
   <div v-if="banner.visible.value" class="error-banner" :class="{ 'is-fading': banner.fading.value }" role="alert">
-    {{ banner.msg.value }}
+    <span class="error-banner-msg">{{ banner.msg.value }}</span>
+    <button class="error-banner-close" type="button" aria-label="关闭通知" @click="banner.dismiss()">×</button>
   </div>
 
   <component :is="currentView" />

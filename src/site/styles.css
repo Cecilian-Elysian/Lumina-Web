@@ -139,6 +139,10 @@ body {
   position: sticky;
   top: 60px;
   z-index: 49;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   margin: 0;
   padding: 10px 20px;
   text-align: center;
@@ -149,6 +153,22 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   transition: opacity 0.4s ease;
+}
+.error-banner-msg { flex: 1; }
+.error-banner-close {
+  background: none;
+  border: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.error-banner-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
 }
 .error-banner.is-fading { opacity: 0; }
 
