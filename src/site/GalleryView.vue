@@ -49,15 +49,7 @@ function onCardKeydown(e: KeyboardEvent, index: number) {
 }
 
 onMounted(async () => {
-  const { images: list, error } = await loadImages();
-  if (error) {
-    const isTokenMissing = /QUBU_TOKEN|未配置环境变量/.test(error);
-    banner.showBanner(
-      isTokenMissing
-        ? 'CF Pages 未配置 QUBU_TOKEN(Settings → Environment variables),已展示兜底演示图'
-        : '图床暂时不可达,已展示兜底演示图 (' + error + ')',
-    );
-  }
+  const { images: list } = await loadImages();
   images.value = list;
   loading.value = false;
 });

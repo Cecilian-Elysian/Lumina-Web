@@ -123,8 +123,10 @@ export async function loadImages(): Promise<{ images: Image[]; error: string | n
     }
     return { images, error: null };
   } catch (err) {
+    // 静默回退:fallback 是预期行为,不打扰用户
+    // 调试信息仅打到 console(DevTools 可见),不弹 banner
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[Lumina] 图床加载失败:', msg, '→ 已回退兜底图。');
-    return { images: toFallbackImages(CONFIG.fallbackImages), error: msg };
+    return { images: toFallbackImages(CONFIG.fallbackImages), error: null };
   }
 }
