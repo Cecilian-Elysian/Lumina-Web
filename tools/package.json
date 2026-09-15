@@ -6,7 +6,6 @@
   "type": "module",
   "main": "server/serve.mjs",
   "scripts": {
-    "build:pages": "node build-pages.mjs",
     "start": "node server/serve.mjs",
     "editor": "node server/serve.mjs",
     "ai": "node ai/build-focal-points.mjs",

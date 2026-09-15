@@ -43,35 +43,43 @@ export function getViewerDir() {
 export function safeParseObject(raw, varName) {
   if (typeof raw !== 'string') throw new Error('safeParseObject: raw 必须是字符串');
 
-  // 1. 去掉 /* ... */ 注释(本项目的 .js 顶部都是块注释)
+  // 1. 去掉 /* ... */ 注释(数据文件顶部都是块注释)
   const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '');
 
-  // 2. 用 acorn 解析
+  // 2. 用 acorn 解析(sourceType: module 以支持 export const 声明)
   let ast;
   try {
-    ast = parse(stripped, { ecmaVersion: 2022, sourceType: 'script' });
+    ast = parse(stripped, { ecmaVersion: 2022, sourceType: 'module' });
   } catch (e) {
     throw new Error('acorn 解析失败: ' + e.message);
   }
 
-  // 3. 拒绝顶层 FunctionDeclaration(即便 targetNode 后面能找到,函数声明本身就是 RCE 风险)
+  // 3. 拒绝顶层函数声明(含 export function),函数声明本身就是 RCE 风险
   for (const stmt of ast.body) {
-    if (stmt.type === 'FunctionDeclaration' || stmt.type === 'FunctionExpression') {
+    const s = stmt.type === 'ExportNamedDeclaration' && stmt.declaration
+      ? stmt.declaration
+      : stmt;
+    if (s.type === 'FunctionDeclaration' || s.type === 'FunctionExpression') {
       throw new Error('不允许顶层函数声明(纯字面量模式)');
     }
   }
 
   // 4. 找到我们要的赋值语句
-  //    - 若提供了 varName:必须形如 `const|var|let NAME = <obj>;` 或 `window.NAME = <obj>;`
+  //    - 若提供了 varName:必须形如 `[export] const NAME = <obj>;` 或 `window.NAME = <obj>;`
   //    - 若没提供:接受裸 `({...})` 表达式(单语句)
   let targetNode = null;
 
   if (varName) {
     for (const stmt of ast.body) {
+      // 解开 export 包装(export const NAME = ... → VariableDeclaration)
+      const s = stmt.type === 'ExportNamedDeclaration' && stmt.declaration
+        ? stmt.declaration
+        : stmt;
+
       // 形式 1: const|let|var NAME = <obj>;
-      if (stmt.type === 'VariableDeclaration' &&
-          (stmt.kind === 'const' || stmt.kind === 'let' || stmt.kind === 'var')) {
-        for (const decl of stmt.declarations) {
+      if (s.type === 'VariableDeclaration' &&
+          (s.kind === 'const' || s.kind === 'let' || s.kind === 'var')) {
+        for (const decl of s.declarations) {
           if (decl.id.type === 'Identifier' && decl.id.name === varName && decl.init) {
             targetNode = decl.init;
             break;
@@ -80,9 +88,9 @@ export function safeParseObject(raw, varName) {
         if (targetNode) break;
         continue;
       }
-      // 形式 2: NAME = <obj>;  (赋值表达式,可能不合法但项目里没用到)
-      if (stmt.type === 'ExpressionStatement') {
-        const expr = stmt.expression;
+      // 形式 2: NAME = <obj>; 或 window.NAME = <obj>;(赋值表达式)
+      if (s.type === 'ExpressionStatement') {
+        const expr = s.expression;
         if (expr.type === 'AssignmentExpression' && expr.operator === '=') {
           const lhs = expr.left;
           const okLhs =
@@ -158,16 +166,16 @@ function evalLiteral(node) {
 }
 
 /* ============================================================
- * viewer config.js (CONFIG)
+ * viewer src/site/config.ts (CONFIG)
  * ============================================================ */
 
 /**
- * 读取并解析 ../js/config.js,返回完整的 CONFIG 对象。
+ * 读取并解析 src/site/config.ts,返回完整的 CONFIG 对象。
  * @returns {Promise<Object>}
  */
 export async function readViewerConfig() {
   const viewerDir = getViewerDir();
-  const raw = await fs.readFile(path.join(viewerDir, 'js', 'config.js'), 'utf8');
+  const raw = await fs.readFile(path.join(viewerDir, 'src', 'site', 'config.ts'), 'utf8');
   return safeParseObject(raw, 'CONFIG');
 }
 
@@ -191,18 +199,18 @@ export async function readLocalSecret(name) {
 }
 
 /* ============================================================
- * focal-points.js (FOCAL_POINTS)
+ * focal-points (FOCAL_POINTS) — src/site/focalPoints.ts
  * ============================================================ */
 
 /**
- * 读取并解析 ../js/focal-points.js,返回 FOCAL_POINTS 对象。
+ * 读取并解析 src/site/focalPoints.ts,返回 FOCAL_POINTS 对象。
  * 文件不存在时返回空对象。
  * @returns {Promise<Object>}
  */
 export async function readFocalPoints() {
   const viewerDir = getViewerDir();
   try {
-    const raw = await fs.readFile(path.join(viewerDir, 'js', 'focal-points.js'), 'utf8');
+    const raw = await fs.readFile(path.join(viewerDir, 'src', 'site', 'focalPoints.ts'), 'utf8');
     return safeParseObject(raw, 'FOCAL_POINTS');
   } catch (e) {
     if (e.code === 'ENOENT') return {};
@@ -211,7 +219,8 @@ export async function readFocalPoints() {
 }
 
 /**
- * 把 focal JSON 写回 ../js/focal-points.js(覆盖)。
+ * 把 focal JSON 写回 src/site/focalPoints.ts(覆盖)。
+ * 注意:保持纯字面量(无 import/类型注解),acorn 才能解析。
  * @param {Object} json
  */
 export async function writeFocalPoints(json) {
@@ -225,9 +234,10 @@ export async function writeFocalPoints(json) {
  * - x/y 是归一化坐标(0=左/上,1=右/下)
  * - 缺失时 viewer 自动回退 CSS 默认值(50% / 25%)
  * - 手动微调:本文件改完提交即可;或用本地 manager/ 可视化编辑
+ * - 纯字面量文件(禁 import/类型注解),由 tools 服务端 acorn 解析
  * ============================================================ */\n`;
-  const body = `window.FOCAL_POINTS = ${JSON.stringify(json, null, 2)};\n`;
-  await fs.writeFile(path.join(viewerDir, 'js', 'focal-points.js'), header + body, 'utf8');
+  const body = `export const FOCAL_POINTS = ${JSON.stringify(json, null, 2)};\n`;
+  await fs.writeFile(path.join(viewerDir, 'src', 'site', 'focalPoints.ts'), header + body, 'utf8');
   return { ok: true, count: Object.keys(json).length };
 }
 
@@ -257,9 +267,9 @@ export function mergeFocalPoints(existing, detected) {
 /* ============================================================
  * 图集(albums)读写
  * ------------------------------------------------------------
- * 文件:../js/albums.js
+ * 文件:src/site/albums.ts
  * 格式:
- *   window.ALBUMS = {
+ *   export const ALBUMS = {
  *     _meta: [ { id: "abc123", name: "德克萨斯" }, ... ],
  *     "https://.../a.jpg": "abc123",  // url → album id
  *     "https://.../b.jpg": "def456"
@@ -276,7 +286,7 @@ const ALBUMS_HEADER = `/* ======================================================
  * ------------------------------------------------------------
  * 由本地 manager/ 可视化编辑器(拖拽)离线产出。
  * 格式:
- *   window.ALBUMS = {
+ *   export const ALBUMS = {
  *     _meta: [ { id: "abc123", name: "德克萨斯" }, ... ],
  *     "https://.../a.jpg": "abc123",   // url → album id
  *     "https://.../b.jpg": "def456"
@@ -287,6 +297,8 @@ const ALBUMS_HEADER = `/* ======================================================
  *   - _meta 数组顺序决定图集显示顺序
  *   - 删除图集时该 id 的所有 url 映射自动移除(降级为未分组)
  *
+ * 注意:纯字面量文件(禁 import/类型注解),由 tools 服务端 acorn 解析
+ *
  * 浏览器侧(可在 DevTools 临时覆盖):
  *   localStorage.setItem('lumina.album.local', JSON.stringify({
  *     'https://...jpg': 'abc123'
@@ -294,13 +306,13 @@ const ALBUMS_HEADER = `/* ======================================================
  * ============================================================ */\n`;
 
 /**
- * 读取 ../js/albums.js。文件不存在返回空结构。
+ * 读取 src/site/albums.ts。文件不存在返回空结构。
  * @returns {Promise<{_meta:Array<{id:string,name:string}>, [url:string]:string}>}
  */
 export async function readAlbums() {
   const viewerDir = getViewerDir();
   try {
-    const raw = await fs.readFile(path.join(viewerDir, 'js', 'albums.js'), 'utf8');
+    const raw = await fs.readFile(path.join(viewerDir, 'src', 'site', 'albums.ts'), 'utf8');
     return safeParseObject(raw, 'ALBUMS');
   } catch (e) {
     if (e.code === 'ENOENT') return { _meta: [] };
@@ -309,7 +321,7 @@ export async function readAlbums() {
 }
 
 /**
- * 把完整 albums 对象写回 ../js/albums.js(覆盖)。
+ * 把完整 albums 对象写回 src/site/albums.ts(覆盖)。
  * 写入顺序:_meta 数组保持;url 映射按 url 字典序排序(diff 稳定)。
  * @param {{_meta:Array,_images?:Object}} doc
  */
@@ -329,8 +341,8 @@ export async function writeAlbums(doc) {
   for (const k of Object.keys(map).sort()) sortedMap[k] = map[k];
 
   const out = { _meta: meta, ...sortedMap };
-  const body = `window.ALBUMS = ${JSON.stringify(out, null, 2)};\n`;
-  await fs.writeFile(path.join(viewerDir, 'js', 'albums.js'), ALBUMS_HEADER + body, 'utf8');
+  const body = `export const ALBUMS = ${JSON.stringify(out, null, 2)};\n`;
+  await fs.writeFile(path.join(viewerDir, 'src', 'site', 'albums.ts'), ALBUMS_HEADER + body, 'utf8');
   return { ok: true, metaCount: meta.length, imageCount: Object.keys(sortedMap).length };
 }
 

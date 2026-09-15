@@ -3,7 +3,7 @@
  * Lumina — AI 批量焦点分析工具
  * ------------------------------------------------------------
  * 用 @vladmandic/face-api 检测每张图的人脸,
- * 自动生成 viewer 根目录的 js/focal-points.js。
+ * 自动生成 viewer 的 src/site/focalPoints.ts。
  *
  * 用法:
  *   node ai/build-focal-points.mjs
@@ -267,7 +267,7 @@ async function main() {
   // 4. 读取已有的焦点数据(保留人工标注,不被 AI 覆盖)
   const existing = await readFocalPoints();
   const existingCount = Object.keys(existing).length;
-  log('📂', `已读取 viewer/js/focal-points.js (${existingCount} 项,将被保留/合并)`);
+  log('📂', `已读取 src/site/focalPoints.ts (${existingCount} 项,将被保留/合并)`);
 
   // 4. 逐张检测(并发) — 本轮新检出的存到 detected,最后再 merge
   const detected = {};
@@ -342,7 +342,7 @@ async function main() {
 
   // 6. 写文件
   await writeFocalPoints(merged);
-  log('💾', `已写入 viewer/js/focal-points.js(${Object.keys(merged).length} 项)`);
+  log('💾', `已写入 src/site/focalPoints.ts(${Object.keys(merged).length} 项)`);
   log('🎉', '完成');
 }
 

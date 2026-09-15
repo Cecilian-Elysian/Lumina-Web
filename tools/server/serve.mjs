@@ -12,14 +12,14 @@
  *
  * 路由:
  *   GET  /                              → 302 → /manager/
- *   GET  /manager/*                     → 本地 manager/ 内静态文件
- *   GET  /api/viewer-config             → 读 ../js/config.js
- *   GET  /api/focal-points              → 读 ../js/focal-points.js
- *   POST /api/focal-points              → 写 ../js/focal-points.js
+ *   GET  /manager/*                     → dist-manager/ 内静态文件(缺失自动构建)
+ *   GET  /api/viewer-config             → 读 src/site/config.ts
+ *   GET  /api/focal-points              → 读 src/site/focalPoints.ts
+ *   POST /api/focal-points              → 写 src/site/focalPoints.ts
  *   GET  /api/proxy-images              → 尝试拉取 viewer 上游图床
- *   POST /api/sync-deploy               → 仅提交并推送 js/focal-points.js
+ *   POST /api/sync-deploy               → 提交并推送数据文件(body 可选 {file})
  *   POST /api/run-ai                    → spawn AI 工具,SSE 流式输出
- *   GET  /api/albums                    → 读 ../js/albums.js
+ *   GET  /api/albums                    → 读 src/site/albums.ts
  *   POST /api/albums                    → 整体覆盖写回
  *   POST /api/albums/add                → 创建新图集,返回 id
  *   POST /api/albums/rename             → 重命名图集
@@ -58,7 +58,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOOLS = path.resolve(__dirname, '..');         // tools/
 const VIEWER = getViewerDir();
 const PROJECT_ROOT = path.resolve(TOOLS, '..');     // Lumina/
-const MANAGER = path.resolve(PROJECT_ROOT, 'manager'); // 本地忽略的 manager/
+const MANAGER = path.resolve(PROJECT_ROOT, 'dist-manager'); // npm run build:manager 产物
 
 // ── CLI 参数 ─────────────────────────────────────
 const cliArgs = Object.fromEntries(
@@ -113,9 +113,21 @@ async function ensureDeps() {
 
 async function ensureManager() {
   try {
-    await fs.access(path.join(MANAGER, 'index.html'));
+    await fs.access(path.join(MANAGER, 'manager.html'));
   } catch {
-    throw new Error('未找到本地 manager/index.html。该目录被 Git 忽略，请从本机备份恢复。');
+    // 产物缺失 → 自动执行 npm run build:manager
+    log('📦', '未找到 dist-manager/manager.html,正在构建 manager(约 10 秒)...');
+    const build = spawn('npm', ['run', 'build:manager'], {
+      cwd: PROJECT_ROOT,
+      stdio: 'inherit',
+      shell: true,
+    });
+    await new Promise((resolve, reject) => {
+      build.on('exit', (code) => {
+        if (code !== 0) { log('❌', 'manager 构建失败,请手动执行 npm run build:manager'); reject(new Error('build:manager failed')); }
+        else { log('✅', 'manager 构建完成'); resolve(); }
+      });
+    });
   }
 }
 
@@ -158,12 +170,12 @@ const MIME = {
   '.ico':  'image/x-icon',
 };
 
-// ── 静态文件服务(限于本地 manager/ 目录) ─────────
+// ── 静态文件服务(限于本地 dist-manager/ 目录) ─────────
 async function serveStatic(req, res, relPath) {
-  // relPath 形如 "/manager/index.html"；统一在 manager/ 下查找。
+  // relPath 形如 "/manager/manager.html"；统一在 dist-manager/ 下查找。
   let rel = relPath.replace(/^\/+/, '');
   if (rel.startsWith('manager/')) rel = rel.slice('manager/'.length);
-  if (rel === '' || rel === '/') rel = 'index.html';
+  if (rel === '' || rel === '/') rel = 'manager.html';
 
   const safe = path.normalize(rel).replace(/^(\.\.[\/\\])+/, '');
   const full = path.join(MANAGER, safe);
@@ -336,8 +348,21 @@ function runCommand(command, args, options = {}) {
   });
 }
 
-async function syncFocalPoints() {
-  const focalPath = 'js/focal-points.js';
+// 可同步的数据文件白名单:path → git commit message
+const SYNCABLE_FILES = {
+  'src/site/focalPoints.ts': 'chore: update image focal points',
+  'src/site/albums.ts': 'chore: update albums',
+};
+
+/**
+ * 提交并推送指定数据文件(白名单校验)。
+ * @param {string} filePath 形如 'src/site/focalPoints.ts'
+ */
+async function syncDataFile(filePath) {
+  if (!Object.prototype.hasOwnProperty.call(SYNCABLE_FILES, filePath)) {
+    throw new Error(`不允许同步的文件: ${filePath}(白名单: ${Object.keys(SYNCABLE_FILES).join(' / ')})`);
+  }
+  const commitMsg = SYNCABLE_FILES[filePath];
   const branch = (await runCommand('git', ['branch', '--show-current'])).stdout;
   if (branch !== 'main') {
     throw new Error(`当前分支为 ${branch || '(detached HEAD)'}，只能从 main 同步`);
@@ -346,21 +371,21 @@ async function syncFocalPoints() {
   const remote = (await runCommand('git', ['remote', 'get-url', 'origin'])).stdout;
   if (!remote) throw new Error('未配置 Git 远程 origin');
 
-  const status = await runCommand('git', ['status', '--porcelain', '--', focalPath]);
+  const status = await runCommand('git', ['status', '--porcelain', '--', filePath]);
   if (!status.stdout) {
-    return { changed: false, message: '焦点文件没有新改动，无需同步' };
+    return { changed: false, message: '文件没有新改动，无需同步' };
   }
 
-  await runCommand('git', ['add', '--', focalPath]);
-  const staged = await runCommand('git', ['diff', '--cached', '--quiet', '--', focalPath])
+  await runCommand('git', ['add', '--', filePath]);
+  const staged = await runCommand('git', ['diff', '--cached', '--quiet', '--', filePath])
     .then(() => false)
     .catch(() => true);
   if (!staged) {
-    return { changed: false, message: '焦点文件没有可提交的改动' };
+    return { changed: false, message: '文件没有可提交的改动' };
   }
 
   try {
-    await runCommand('git', ['commit', '-m', 'chore: update image focal points', '--', focalPath]);
+    await runCommand('git', ['commit', '-m', commitMsg, '--', filePath]);
   } catch (err) {
     throw new Error('提交失败：' + err.message);
   }
@@ -368,7 +393,7 @@ async function syncFocalPoints() {
   try {
     await runCommand('git', ['push', 'origin', 'main']);
   } catch (err) {
-    throw new Error('已在本地提交焦点文件，但推送失败：' + err.message);
+    throw new Error('已在本地提交，但推送失败：' + err.message);
   }
 
   return {
@@ -435,7 +460,7 @@ async function handle(req, res, url) {
         throw new Error('body 必须是对象');
       }
       const r = await writeFocalPoints(json);
-      log('💾', `写入 focal-points.js(${r.count} 项)${r.ok ? '' : ' — ' + r.error}`);
+      log('💾', `写入 focalPoints.ts(${r.count} 项)${r.ok ? '' : ' — ' + r.error}`);
       res.writeHead(r.ok ? 200 : 500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(r));
     } catch (e) {
@@ -460,8 +485,16 @@ async function handle(req, res, url) {
 
   if (pathname === '/api/sync-deploy' && req.method === 'POST') {
     try {
-      const result = await syncFocalPoints();
-      log('↥', result.message);
+      // body 可选 { file: 'src/site/focalPoints.ts' | 'src/site/albums.ts' }
+      // 缺省 = focalPoints(兼容旧调用)
+      let file = 'src/site/focalPoints.ts';
+      const body = await readBody(req);
+      if (body) {
+        const j = JSON.parse(body);
+        if (j && typeof j.file === 'string') file = j.file;
+      }
+      const result = await syncDataFile(file);
+      log('↥', `[${file}] ${result.message}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, ...result }));
     } catch (e) {
@@ -530,7 +563,7 @@ async function handle(req, res, url) {
       // 字段级校验:类型、长度、id 存在性等
       validateAlbumsDoc(doc);
       const r = await writeAlbums(doc);
-      log('💾', `写入 albums.js (meta=${r.metaCount}, images=${r.imageCount})`);
+      log('💾', `写入 albums.ts (meta=${r.metaCount}, images=${r.imageCount})`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, ...r }));
     } catch (e) {
@@ -618,7 +651,7 @@ async function bootstrap() {
     log('✨', `Lumina 编辑器已启动`);
     log('🌐', `编辑器: ${url}`);
     log('📂', `tools/    = ${TOOLS}`);
-    log('📂', `manager/  = ${MANAGER}`);
+    log('📂', `dist-manager/ = ${MANAGER}`);
     log('📂', `viewer/   = ${VIEWER}`);
     log('⏹ ', `按 Ctrl+C 停止服务`);
   });

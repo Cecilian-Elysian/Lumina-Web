@@ -24,6 +24,22 @@ describe('safeParseObject', () => {
     expect(out).toEqual({ _meta: [], url1: 'id1' });
   });
 
+  it('解析 export const 声明(ES module 数据文件)', () => {
+    const src = `
+/* header comment */
+export const FOCAL_POINTS = {
+  "https://a/1.jpg": { x: 0.5, y: 0.2 },
+};
+`;
+    const out = safeParseObject(src, 'FOCAL_POINTS');
+    expect(out).toEqual({ 'https://a/1.jpg': { x: 0.5, y: 0.2 } });
+  });
+
+  it('拒绝 export function 声明', () => {
+    expect(() => safeParseObject('export function hack(){ process.exit(); } export const FOO = { a: 1 };', 'FOO'))
+      .toThrow();
+  });
+
   it('解析裸 ObjectExpression(无 varName)', () => {
     // 注意:JS 里 `{` 在语句开头会被当成 block,需包成表达式 `({...})`
     const out = safeParseObject('({ foo: 1, bar: [1,2,3] });');
@@ -110,12 +126,12 @@ const FOO = {
       .toThrow(/acorn 解析失败/);
   });
 
-  it('解析当前 viewer 的 config.js', async () => {
+  it('解析当前 viewer 的 config.ts', async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const configPath = path.resolve(__dirname, '..', '..', 'js', 'config.js');
+    const configPath = path.resolve(__dirname, '..', '..', 'src', 'site', 'config.ts');
     const raw = await fs.readFile(configPath, 'utf8');
     const cfg = safeParseObject(raw, 'CONFIG');
     expect(cfg.mode).toBe('proxy');
@@ -123,23 +139,23 @@ const FOO = {
     expect(Array.isArray(cfg.fallbackImages)).toBe(true);
   });
 
-  it('解析当前 viewer 的 albums.js', async () => {
+  it('解析当前 viewer 的 albums.ts', async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const albumsPath = path.resolve(__dirname, '..', '..', 'js', 'albums.js');
+    const albumsPath = path.resolve(__dirname, '..', '..', 'src', 'site', 'albums.ts');
     const raw = await fs.readFile(albumsPath, 'utf8');
     const albums = safeParseObject(raw, 'ALBUMS');
     expect(Array.isArray(albums._meta)).toBe(true);
   });
 
-  it('解析当前 viewer 的 focal-points.js', async () => {
+  it('解析当前 viewer 的 focalPoints.ts', async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const fpPath = path.resolve(__dirname, '..', '..', 'js', 'focal-points.js');
+    const fpPath = path.resolve(__dirname, '..', '..', 'src', 'site', 'focalPoints.ts');
     const raw = await fs.readFile(fpPath, 'utf8');
     const fp = safeParseObject(raw, 'FOCAL_POINTS');
     expect(typeof fp).toBe('object');

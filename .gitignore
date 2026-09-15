@@ -22,8 +22,8 @@ node_modules/
 # Cloudflare Pages 构建产物
 /dist/
 
-# Manager 控制台仅保存在本机，不上传 GitHub
-/manager/
+# Manager 本地构建产物(npm run build:manager,仅本机使用不上传)
+/dist-manager/
 
 # Tools 运行产物（Tools 源码和依赖锁文件正常入库）
 tools/node_modules/

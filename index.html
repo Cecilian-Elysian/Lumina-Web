@@ -1,114 +1,17 @@
 <!DOCTYPE html>
-<!--
-  ============================================================
-  流动图片墙 (Lumina) — 页面骨架
-  ------------------------------------------------------------
-  结构说明：
-    navbar    → 由 js/navbar.js 统一注入（自动高亮当前页）
-    main#wall → 图片墙容器（多行叠层轨道，由 js/main.js 动态生成）
-    footer    → 页脚（图片来源/版权说明）
-    #lightbox → 灯箱预览（默认隐藏，点击图片后弹出大图）
-
-  脚本加载顺序（有依赖，不能颠倒）：
-    1. js/config.js → 先定义全局配置对象 CONFIG
-    2. js/main.js   → 后读取 CONFIG 并渲染页面
-  ============================================================
--->
 <html lang="zh-CN">
 <head>
-  <!-- 字符编码：必须放在最前，保证中文正常显示 -->
   <meta charset="UTF-8">
-  <!-- 视口设置：让手机端按设备宽度渲染，禁用缩放抖动 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- 主题色：移动浏览器顶部状态栏颜色，与页面背景一致 -->
   <meta name="theme-color" content="#14161a">
-  <!-- 提前与图床建立 TCP/TLS 连接,首图加载提速 ~100-300ms -->
   <link rel="preconnect" href="https://7bu.top" crossorigin>
   <link rel="dns-prefetch" href="https://bu.dusays.com">
-  <!-- 预加载兜底图:浏览器解析 HTML 时就开始下载,与 JS/API 完全并行
-       ⚠️ 改了 js/config.js 的 fallbackImages 后,这里的 URL 也要同步改 -->
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/26/6a8e4886824f2.png" fetchpriority="high">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/25/6a8da73da2991.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543c1b449f.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543c13d1ba.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543c080d97.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543be8af5f.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543b4e47a6.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/05/6a72df8a995d2.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71e68e7c675.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71cd89ebd59.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543b142698.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543aec18c9.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/07/6a7543aec93d3.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/05/6a72e1e316838.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71ed5d3acdd.jpg">
-  <link rel="preload" as="image" href="https://bu.dusays.com/2026/08/04/6a71e67ca957f.jpg">
-  <!-- 页面描述（利于 SEO / 分享摘要） -->
   <meta name="description" content="流动图片墙 — 多行叠层水平流动的图片展示墙">
-  <!-- 浏览器标签页标题 -->
   <title>流动图片墙 · Lumina</title>
-  <!-- 外部样式表 -->
-  <link rel="stylesheet" href="css/style.css">
+  <script>window.__VIEW__ = 'home';</script>
 </head>
 <body>
-  <!--
-  ========== 导航栏 ==========
-  由 js/navbar.js 统一注入（自动高亮当前页），无需在此手写。
-  -->
-
-
-<!--
-    ========== 图片墙主容器 ==========
-    内部由 JS 按 CONFIG.rows 生成若干 .row（每一行一个滚动轨道），
-    HTML 中保持为空即可。
-  -->
-  <main id="wall" class="wall" aria-label="流动图片墙">
-  </main>
-
-
-   <!-- ========== 页脚 ========== -->
-  <footer class="site-footer">
-    <!-- _blank 让链接在新标签页打开 -->
-    <!-- noopener 防止跳转到钓鱼/恶意站点 -->
-    <p><a href="https://github.com/Cecilian-Elysian/Lumina" target="_blank" rel="noopener">GitHub</a></p>
-  </footer>
-
-
-  <!--
-  ========== 灯箱（大图预览） ==========
-    role="dialog" + aria-modal  → 告诉屏幕阅读器这是模态对话框
-    .hidden 类控制显隐（样式在 css 中定义）
-    内部元素：
-      #lb-img     → 大图本体
-      #lb-caption → 底部说明文字（序号 + 图片名）
-      #lb-close   → 右上角关闭按钮
-      #lb-prev    → 左侧"上一张"箭头
-      #lb-next    → 右侧"下一张"箭头
-  -->
-  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="图片预览">
-    <!-- 关闭按钮：aria-label 供屏幕阅读器朗读按钮用途 -->
-    <button id="lb-close" class="lb-btn lb-close" aria-label="关闭预览" title="关闭 (Esc)">×</button>
-    <!-- 上一张箭头（‹ 是 ‹ 字符） -->
-    <button id="lb-prev" class="lb-btn lb-prev" aria-label="上一张" title="上一张 (←)">‹</button>
-    <!-- 大图：alt 由 JS 动态填入图片名 -->
-    <img id="lb-img" class="lb-img" alt="">
-    <!-- 下一张箭头 -->
-    <button id="lb-next" class="lb-btn lb-next" aria-label="下一张" title="下一张 (→)">›</button>
-    <!-- 底部说明：显示 "3 / 60" 计数与图片名 -->
-    <p id="lb-caption" class="lb-caption"></p>
-  </div>
-
-  <!-- 配置文件必须先于主逻辑加载（main.js 依赖全局 CONFIG） -->
-  <script src="js/config.js" defer></script>
-  <!-- 共享模块（utils / api / lightbox，main.js 复用） -->
-  <script src="js/shared/utils.js" defer></script>
-  <script src="js/shared/api.js" defer></script>
-  <script src="js/shared/lightbox.js" defer></script>
-  <!-- 统一导航栏注入（defer 保证在 DOM 就绪后执行） -->
-  <script src="js/navbar.js" defer></script>
-  <!-- 焦点数据 + 运行时（必须在 main.js 之前，定义全局 FOCAL_POINTS / FocalRuntime） -->
-  <script src="js/focal-points.js" defer></script>
-  <script src="js/focal-runtime.js" defer></script>
-  <script src="js/main.js" defer></script>
+  <div id="app"></div>
+  <script type="module" src="/src/site/main.ts"></script>
 </body>
 </html>

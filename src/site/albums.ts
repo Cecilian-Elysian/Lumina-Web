@@ -1,25 +1,14 @@
 /* ============================================================
- * 图集(手动分类)— 图片-图集映射数据桥
+ * 图集数据(纯字面量数据)
  * ------------------------------------------------------------
- * 由本地 manager/ 可视化编辑器(拖拽)离线产出。
- * 格式:
- *   window.ALBUMS = {
- *     _meta: [ { id: "abc123", name: "德克萨斯" }, ... ],
- *     "https://.../a.jpg": "abc123",   // url → album id
- *     "https://.../b.jpg": "def456"
- *   };
+ * 由本地 Manager(拖拽)离线产出。
+ *   _meta: [{id, name}] — 图集元数据,数组顺序决定显示顺序
+ *   其余键: url → albumId
+ *   未出现的 url = 未分组
  *
- * 规则:
- *   - 一个 url 至多一个 album id;未出现的 url = 未分组
- *   - _meta 数组顺序决定图集显示顺序
- *   - 删除图集时该 id 的所有 url 映射自动移除(降级为未分组)
- *
- * 浏览器侧(可在 DevTools 临时覆盖):
- *   localStorage.setItem('lumina.album.local', JSON.stringify({
- *     'https://...jpg': 'abc123'
- *   }))
+ * 【本文件保持纯字面量:禁 import / 类型注解,tools/server 用 acorn 解析】
  * ============================================================ */
-window.ALBUMS = {
+export const ALBUMS = {
   "_meta": [
     {
       "id": "00000001",

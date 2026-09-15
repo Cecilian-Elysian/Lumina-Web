@@ -1,7 +1,7 @@
 # Lumina Tools · 编辑器
 
-本地运行的服务与 AI 工具，为 `../js/focal-points.js` 产出焦点数据 + `../js/albums.js` 提供图集管理 API。
-Manager UI 位于项目根目录 `manager/`，整目录被 Git 忽略；Tools 源码正常进入 GitHub，但不会进入 Cloudflare 的 `dist/`。
+本地运行的服务与 AI 工具，为 `../src/site/focalPoints.ts` 产出焦点数据 + `../src/site/albums.ts` 提供图集管理 API。
+Manager 源码位于 `../src/manager/`（Vue 3，正常入库），构建产物在 `../dist-manager/`（Git 忽略，仅本机）；Tools 源码正常进入 GitHub，但不会进入 Cloudflare 的 `dist/`。
 
 按职责分目录组织：
 
@@ -12,12 +12,13 @@ tools/
 ├── console.bat                  ← Windows 快捷键：服务已启时直接打开浏览器(DevTools 自动开)
 ├── package.json                 ← Node 依赖
 ├── README.md                    ← 本文件
-├── build-pages.mjs              ← 生成 Cloudflare Pages 的 dist/
 │
 ├── server/                      ← ★ 启动器 + HTTP 服务器
 │   ├── serve.mjs                ← 入口（node server/serve.mjs）
 │   └── lib/
-│       └── config-reader.mjs    ← 共享：读取 viewer 的 config.js / focal-points.js / albums.js
+│       └── config-reader.mjs    ← 共享：acorn 安全解析 src/site/*.ts 数据文件
+│
+├── test/                        ← node 侧测试（npm test，独立 vitest 配置）
 │
 └── ai/                          ← ★ AI 工具（命令行）
     ├── build-focal-points.mjs   ← 人脸检测 + 批量分析（含 --download-only）
@@ -48,7 +49,7 @@ node server/serve.mjs
 
 启动后会：
 - 自动检测 Node.js（需要 ≥18）
-- 检查本地 `../manager/index.html` 是否存在
+- 检查本地 `../dist-manager/manager.html` 是否存在，缺失时自动 `npm run build:manager`
 - 首次运行自动 `npm install`
 - 分配端口（默认 8002，冲突顺延 8003/8004）
 - 自动打开浏览器到实际端口的 `/manager/`
@@ -75,8 +76,8 @@ Manager 有两个 tab：
 |---|---|
 | **↻ 读取图片列表** | 通过本地代理拉真实图床；失败时加载 viewer 兜底图 |
 | **🧠 AI 批量分析** | 调用 AI 工具，自动检测人脸并写回 viewer |
-| **💾 保存到 viewer** | 把当前会话的编辑结果写入 `../js/focal-points.js` |
-| **↥ 同步并部署** | 仅提交并推送 `js/focal-points.js` 到 `origin/main`，触发 Cloudflare Pages 部署 |
+| **💾 保存到 viewer** | 把当前会话的编辑结果写入 `../src/site/focalPoints.ts` |
+| **↥ 同步并部署** | 仅提交并推送 `src/site/focalPoints.ts` 到 `origin/main`，触发 Cloudflare Pages 部署 |
 | **📋 导出 JSON** | 不写入，只导出 JSON 文本（用于复制粘贴） |
 
 #### 单图编辑
@@ -99,16 +100,16 @@ Manager 有两个 tab：
 | **图集 chip** 上的 🗑 | 删除图集（旗下 url 自动降级为未分组） |
 | **🚮 未分组 chip** | 拖到此 = 解除归属 |
 | **拖图片 → 图集** | 把图片加入图集 |
-| **💾 保存到 viewer** | 把改动写入 `../js/albums.js` |
-| **↥ 同步并部署** | 仅提交并推送 `js/albums.js` 到 `origin/main` |
+| **💾 保存到 viewer** | 把改动写入 `../src/site/albums.ts` |
+| **↥ 同步并部署** | 仅提交并推送 `src/site/albums.ts` 到 `origin/main` |
 
 #### 工作流
 
 1. 点 **＋ 新建图集** → 输入"德克萨斯" → 创建
 2. 从图片网格拖图到该 chip → 数字 +1
 3. 拖错/不想保留 → 拖到 🚮 解除
-4. 点 **💾 保存到 viewer** → 写入 `js/albums.js`
-5. `git add js/albums.js && git commit && git push` 触发部署
+4. 点 **💾 保存到 viewer** → 写入 `src/site/albums.ts`
+5. 点 **↥ 同步并部署** 提交推送(或手动 `git add src/site/albums.ts && git commit && git push`)触发部署
 
 > 编辑结果保存在 `localStorage.lumina.album.local`，仅本浏览器有效。
 > 手动覆盖：`localStorage.setItem('lumina.album.local', JSON.stringify({ url: 'albumId' }))`，刷新即生效。
@@ -123,7 +124,7 @@ Manager 有两个 tab：
 cd tools
 npm install                              # 首次
 
-# 基础：用 config.js 的兜底图，生成 max（最大脸）策略
+# 基础：用 config.ts 的兜底图，生成 max（最大脸）策略
 node ai/build-focal-points.mjs
 
 # 多人合影：用所有人脸包围盒中心
@@ -178,17 +179,17 @@ node ai/analyze-images.mjs --json
 | 方法 | 路径 | 作用 |
 |---|---|---|
 | GET | `/` | 302 → `/manager/` |
-| GET | `/manager/*` | 根目录本地 `manager/` 内静态文件 |
-| GET | `/api/viewer-config` | 读取 `../../js/config.js` |
-| GET | `/api/focal-points` | 读取 `../js/focal-points.js` |
-| POST | `/api/focal-points` | 写入 `../js/focal-points.js`（body=JSON） |
-| GET | `/api/albums` | 读取 `../js/albums.js` |
-| POST | `/api/albums` | 整体覆盖写回 `../js/albums.js`（body={_meta, ...url→id}） |
+| GET | `/manager/*` | `../dist-manager/` 内静态文件(缺失自动构建) |
+| GET | `/api/viewer-config` | 读取 `../../src/site/config.ts` |
+| GET | `/api/focal-points` | 读取 `../src/site/focalPoints.ts` |
+| POST | `/api/focal-points` | 写入 `../src/site/focalPoints.ts`（body=JSON） |
+| GET | `/api/albums` | 读取 `../src/site/albums.ts` |
+| POST | `/api/albums` | 整体覆盖写回 `../src/site/albums.ts`（body={_meta, ...url→id}） |
 | POST | `/api/albums/add` | body=`{name}` → 创建新图集，返回 `{id, name}` |
 | POST | `/api/albums/rename` | body=`{id, name}` → 重命名 |
 | POST | `/api/albums/delete` | body=`{id}` → 删除图集，旗下 url 自动降级为未分组 |
 | GET | `/api/proxy-images` | 尝试从 viewer 上游图床拉取真实数据(自动分页合并,单页 40 张硬上限被代理吸收) |
-| POST | `/api/sync-deploy` | 仅提交并推送 `js/focal-points.js` 到 `origin/main` |
+| POST | `/api/sync-deploy` | 提交并推送数据文件到 `origin/main`(body 可选 `{file}`，白名单内的 ts) |
 | POST | `/api/run-ai` | spawn AI 工具，SSE 流式返回日志 |
 
 ---
@@ -198,8 +199,8 @@ node ai/analyze-images.mjs --json
 **Q：启动后浏览器没自动打开？**
 A：查看终端输出的实际端口，手动访问 `http://127.0.0.1:<端口>/manager/`。
 
-**Q：提示缺少 manager/index.html？**
-A：`manager/` 被 Git 忽略且只保存在本机，请从本机备份恢复该目录。
+**Q：提示构建 manager 失败？**
+A：在项目根目录手动执行 `npm run build:manager`，确认 Node ≥18 且依赖已安装（`npm install`）。
 
 **Q：AI 工具报"无法加载模型"？**
 A：检查网络，首次需要从 GitHub 下载模型。
@@ -218,6 +219,6 @@ A：需要 ≥18，前往 https://nodejs.org 下载新版。
 
 ## 部署边界
 
-- `node build-pages.mjs` 只复制 `index.html`、`css/`、`js/` 到 `../dist/`。
-- `tools/`、`manager/`、`.dev.vars` 和模型权重不会进入 Cloudflare 静态产物。
+- 项目根目录 `npm run build`（Vite）构建 index/gallery/404 到 `dist/`。
+- `tools/`、`src/manager/`、`dist-manager/`、`.dev.vars` 和模型权重不会进入 Cloudflare 静态产物。
 - 本地服务只监听 `127.0.0.1`。
