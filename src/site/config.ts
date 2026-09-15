@@ -16,8 +16,8 @@
 export const CONFIG = {
   /* ---- 数据源模式 ----
    * 'proxy'  → 请求本站 /api/images 代理(token 在服务端,推荐)
-   * 'direct' → 前端直连图床(token 写在下方,仅调试用) */
-  mode: 'proxy',
+   * 'direct' → 前端直连图床(token 写在下方,会暴露给浏览器) */
+  mode: 'direct',
 
   /* ---- 关闭图床 API(完全跳过 /api/images 与图床请求) ----
    * true  → 直接用 fallbackImages,不发任何网络请求,
@@ -32,6 +32,10 @@ export const CONFIG = {
   authType: 'bearer',
   authKey: 'Authorization',
   tokenPrefix: 'Bearer ',
+  /* ★ 在 7bu.top 控制台 → API 令牌 → 复制 Bearer token 填到这里。
+   *    直连模式 token 会暴露给浏览器 DevTools,仅适合个人 demo。
+   *    想隐藏 token:把 mode 改回 'proxy',在 CF Pages Settings
+   *    → Environment variables 加 QUBU_TOKEN(Secret 类型)。 */
   token: '',
 
   /* ---- 返回数据字段映射(点分路径) ---- */
