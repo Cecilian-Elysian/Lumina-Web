@@ -35,13 +35,15 @@ export async function onRequest(context) {
   // context.request —— 原始请求
   const { request, env } = context;
 
-  // 读取密钥；未配置时返回明确的错误提示，方便部署排错
+  // 读取密钥；未配置时静默返回空列表(前端会走 fallbackImages,不打扰用户)
+  // - 返回 200 + status:false 而非 500:避免前端 catch 路径误判为「上游故障」
+  // - message 里点明根因,前端 banner 会据此给出可执行的修复指引
   const token = env.QUBU_TOKEN;
   if (!token) {
-    return json(500, {
+    return json(200, {
       status: false,
       message: '未配置环境变量 QUBU_TOKEN，请在 Pages 项目 Settings → Environment variables 中添加',
-      data: {},
+      data: { data: [] },
     });
   }
 
