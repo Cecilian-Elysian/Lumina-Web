@@ -3,6 +3,7 @@
  * ------------------------------------------------------------
  *   useFocal      焦点 → CSS 变量样式(纯绑定,根治旧版查表键错误)
  *   useAlbums     图集聚合(ALBUMS + localStorage 覆盖 + 未分组兜底)
+ *   useTags       图片标签(TAGS + localStorage 覆盖)
  *   useLightbox   灯箱单例(App.vue 挂载组件,各视图调用 open)
  * ============================================================ */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
@@ -10,6 +11,7 @@ import type { CSSProperties } from 'vue';
 import type { Image, Album, AlbumMeta, LightboxItem } from '@/shared/types';
 import { FOCAL_POINTS } from './focalPoints';
 import { ALBUMS } from './albums';
+import { TAGS } from './tags';
 
 /* ============================================================
  * useFocal — 焦点样式
@@ -106,21 +108,98 @@ export function useAlbums(images: () => Image[]) {
 }
 
 /* ============================================================
+ * useTags — 图片标签
+ * ------------------------------------------------------------
+ * 优先级: localStorage(lumina.tags.local) > TAGS 静态数据。
+ * LS 值为 string[](覆盖静态)或 null(显式清空该图全部标签)。
+ * ★ 键约定与焦点/图集一致:Image.url(原图直链),不是 thumb。
+ * ============================================================ */
+const LS_TAGS_KEY = 'lumina.tags.local';
+
+function readTagOverrides(): Record<string, string[] | null> {
+  try {
+    const o: unknown = JSON.parse(localStorage.getItem(LS_TAGS_KEY) || '{}');
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
+    return o as Record<string, string[] | null>;
+  } catch {
+    return {};
+  }
+}
+
+/** 单图标签,非法项过滤 */
+function sanitizeTags(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
+}
+
+export function useTags() {
+  /** 单图标签(静态 TAGS + LS 覆盖合并) */
+  function tagsOf(url: string): string[] {
+    const override = readTagOverrides()[url];
+    if (override !== undefined) return sanitizeTags(override);
+    return sanitizeTags((TAGS as Record<string, unknown>)[url]);
+  }
+
+  /** 多图标签并集,按出现频次降序;同频次保持首次出现顺序(Map 插入序 + 稳定排序) */
+  function albumTags(urls: string[]): string[] {
+    const counts = new Map<string, number>();
+    for (const u of urls) {
+      for (const t of tagsOf(u)) counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([t]) => t);
+  }
+
+  /** 全站标签(去重,频次降序) */
+  function allTags(): string[] {
+    const urls = new Set([
+      ...Object.keys(TAGS as Record<string, unknown>),
+      ...Object.keys(readTagOverrides()),
+    ]);
+    return albumTags([...urls]);
+  }
+
+  return { tagsOf, albumTags, allTags };
+}
+
+/* ============================================================
  * useLightbox — 灯箱单例
  * ------------------------------------------------------------
  * 模块级单例状态:App.vue 渲染 <Lightbox/>,任意视图调用
  * useLightbox().open(...) 打开,共用同一份列表与键盘事件。
+ * 附带缩放/平移状态(滚轮/双击/+/−/0 键),换图与开关自动复位。
  * ============================================================ */
 const lbState = {
   isOpen: ref(false),
   items: ref<LightboxItem[]>([]),
   index: ref(0),
+  /** 缩放(1–4)与平移偏移 px */
+  scale: ref(1),
+  tx: ref(0),
+  ty: ref(0),
 };
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+export const LIGHTBOX_ZOOM = { min: ZOOM_MIN, max: ZOOM_MAX, step: 0.25 } as const;
+
+function lbResetView() {
+  lbState.scale.value = ZOOM_MIN;
+  lbState.tx.value = 0;
+  lbState.ty.value = 0;
+}
+
+function lbZoomBy(d: number) {
+  const s = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, lbState.scale.value + d));
+  lbState.scale.value = s;
+  if (s === ZOOM_MIN) { lbState.tx.value = 0; lbState.ty.value = 0; }
+}
 
 function lbOpen(list: LightboxItem[], start = 0) {
   lbState.items.value = list;
   lbState.index.value = start;
   lbState.isOpen.value = true;
+  lbResetView();
 }
 
 function lbClose() {
@@ -131,12 +210,14 @@ function lbNext() {
   const total = lbState.items.value.length;
   if (total === 0) return;
   lbState.index.value = (lbState.index.value + 1) % total;
+  lbResetView();
 }
 
 function lbPrev() {
   const total = lbState.items.value.length;
   if (total === 0) return;
   lbState.index.value = (lbState.index.value - 1 + total) % total;
+  lbResetView();
 }
 
 function lbOnKey(e: KeyboardEvent) {
@@ -144,6 +225,9 @@ function lbOnKey(e: KeyboardEvent) {
   if (e.key === 'Escape') lbClose();
   else if (e.key === 'ArrowRight') lbNext();
   else if (e.key === 'ArrowLeft') lbPrev();
+  else if (e.key === '+' || e.key === '=') lbZoomBy(LIGHTBOX_ZOOM.step);
+  else if (e.key === '-') lbZoomBy(-LIGHTBOX_ZOOM.step);
+  else if (e.key === '0') lbResetView();
 }
 
 /* ============================================================
@@ -218,10 +302,15 @@ export function useLightbox() {
     isOpen: lbState.isOpen,
     items: lbState.items,
     index: lbState.index,
+    scale: lbState.scale,
+    tx: lbState.tx,
+    ty: lbState.ty,
     current,
     open: lbOpen,
     close: lbClose,
     next: lbNext,
     prev: lbPrev,
+    zoomBy: lbZoomBy,
+    resetView: lbResetView,
   };
 }

@@ -12,6 +12,13 @@
  *   8. 404 页
  *   9. 响应式
  *  10. 无障碍: prefers-reduced-motion
+ *  11. 设置页(滑杆 / 开关 / 预览轨道)
+ *  12. 标签 chips(图集卡片 + 灯箱)
+ *  13. 视图切换(图集 | 全部)
+ *  14. 瀑布流(masonry)
+ *  15. 灯箱增强(舞台 / 下载 / 标签)
+ *  16. 动画开关(html[data-anim='off'])
+ *  17. 响应式补充(设置页 / masonry)
  * ============================================================ */
 
 /* ============ 1. CSS 变量 ============ */
@@ -542,4 +549,342 @@ body {
   .card img,
   .lb-btn { transition: none; }
   .card img { opacity: 1; }
+}
+
+/* ============ 11. 设置页 ============ */
+.settings-hero {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 80px 60px 48px;
+}
+
+.settings-title {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.settings-subtitle {
+  margin-top: 12px;
+  color: var(--text-sub);
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.settings-main {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 60px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-group {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--card-radius);
+  padding: 8px 24px;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 88px;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0;
+}
+.setting-row + .setting-row { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+
+.setting-label {
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0.04em;
+}
+
+.setting-value {
+  text-align: right;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-row input[type='range'] {
+  width: 100%;
+  accent-color: var(--brand-1);
+  cursor: pointer;
+}
+
+/* 拨动开关 */
+.toggle {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  justify-self: end;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+.toggle.on {
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+  border-color: transparent;
+}
+.toggle.on::after { transform: translateX(24px); }
+
+/* 预览轨道 */
+.settings-preview {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--card-radius);
+  padding: 20px;
+  overflow: hidden;
+}
+
+.preview-track {
+  display: flex;
+  width: max-content;
+  animation: preview-scroll 12s linear infinite;
+}
+
+@keyframes preview-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.preview-card {
+  flex: 0 0 var(--card-w, 300px);
+  height: var(--card-height);
+  margin-right: var(--row-gap, 16px);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  background:
+    linear-gradient(135deg, rgba(255, 77, 109, 0.35), rgba(255, 159, 64, 0.35)),
+    #23262c;
+}
+
+.preview-note {
+  margin-top: 14px;
+  color: var(--text-sub);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-reset {
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.settings-reset:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.settings-reset:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+
+.settings-hint {
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.settings-hint.show { opacity: 1; }
+
+/* ============ 12. 标签 chips ============ */
+.gallery-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 18px 14px;
+}
+
+.tag-chip {
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.14);
+  border: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.tag-chip:hover {
+  background: rgba(255, 255, 255, 0.26);
+  transform: translateY(-1px);
+}
+.tag-chip:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+
+/* ============ 13. 视图切换(图集 | 全部) ============ */
+.hero-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+}
+
+.view-switch {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.view-switch button {
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 7px 18px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.view-switch button.active {
+  color: #fff;
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+}
+.view-switch button:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: -2px;
+}
+
+/* ============ 14. 瀑布流(masonry) ============ */
+.masonry {
+  columns: 4 260px;
+  column-gap: 16px;
+}
+
+.masonry-item {
+  break-inside: avoid;
+  margin: 0 0 16px;
+  border-radius: var(--card-radius);
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.masonry-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.masonry-item:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+
+.masonry-item img {
+  display: block;
+  width: 100%;
+  background: #23262c;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.masonry-item img.is-loaded { opacity: 1; }
+
+/* ============ 15. 灯箱增强 ============ */
+.lb-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.lb-stage .lb-img { will-change: transform; }
+
+.lb-download {
+  top: 22px;
+  right: 86px;   /* 避开右上角 × 按钮 */
+  font-size: 1.2rem;
+  text-decoration: none;
+}
+
+.lb-tags {
+  position: absolute;
+  bottom: 56px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 80px;
+  pointer-events: none;
+}
+
+.lb-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 2px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+/* ============ 16. 动画开关 ============ */
+html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
+
+/* ============ 17. 响应式补充 ============ */
+@media (max-width: 768px) {
+  .settings-hero { padding: 40px 16px 24px; }
+  .settings-title { font-size: 2.2rem; }
+  .settings-subtitle { font-size: 0.85rem; }
+  .settings-main { padding: 0 16px 40px; gap: 20px; }
+  .settings-group { padding: 4px 16px; }
+  .setting-row { grid-template-columns: 84px 1fr 72px; gap: 10px; }
+
+  .hero-toolbar { flex-wrap: wrap; }
+
+  .masonry { columns: 2 140px; column-gap: 10px; }
+  .masonry-item { margin-bottom: 10px; }
+
+  .lb-tags { bottom: 52px; padding: 0 60px; }
 }

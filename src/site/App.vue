@@ -3,13 +3,14 @@ import { computed } from 'vue';
 import HomeView from './HomeView.vue';
 import GalleryView from './GalleryView.vue';
 import NotFoundView from './NotFoundView.vue';
+import SettingsView from './SettingsView.vue';
 import Lightbox from './Lightbox.vue';
 import { useErrorBanner } from './composables';
 
-/** 入口 HTML 内联脚本注入的视图标识(home / gallery / notfound) */
+/** 入口 HTML 内联脚本注入的视图标识(home / gallery / settings / notfound) */
 const view = window.__VIEW__ || 'home';
 
-const views = { home: HomeView, gallery: GalleryView, notfound: NotFoundView } as const;
+const views = { home: HomeView, gallery: GalleryView, settings: SettingsView, notfound: NotFoundView } as const;
 type ViewKey = keyof typeof views;
 
 const currentView = computed(() => views[(view as ViewKey) in views ? (view as ViewKey) : 'notfound']);
@@ -17,6 +18,7 @@ const currentView = computed(() => views[(view as ViewKey) in views ? (view as V
 const navItems = [
   { href: 'index.html', key: 'home', text: '主页' },
   { href: 'gallery.html', key: 'gallery', text: '图集' },
+  { href: 'settings.html', key: 'settings', text: '设置' },
 ] as const;
 
 const banner = useErrorBanner();

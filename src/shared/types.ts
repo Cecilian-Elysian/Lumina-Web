@@ -37,6 +37,9 @@ export interface AlbumsDoc {
   [url: string]: AlbumMeta[] | string;
 }
 
+/** tags 数据文件整体: url → 标签数组(键 = Image.url 原图直链) */
+export type TagsDoc = { [url: string]: string[] };
+
 /** 聚合后的图集(图集页渲染用) */
 export interface Album {
   id: string;

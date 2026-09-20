@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { loadImages } from '@/shared/apiClient';
 import { shuffle } from '@/shared/utils';
 import type { Image } from '@/shared/types';
-import { CONFIG } from './config';
-import { useFocal, useLightbox, useErrorBanner } from './composables';
+import { useSettings } from './settings';
+import { useFocal, useLightbox } from './composables';
 
 /* ============================================================
  * 黑框 bug 修复说明:
@@ -13,6 +13,11 @@ import { useFocal, useLightbox, useErrorBanner } from './composables';
  *     1. 先只渲染原图序列,等待全部 @load/@error 完成
  *     2. allLoaded 后才把每行数据双份渲染(displayRows)并加 .ready
  *   副本从诞生起就带真实 src,不再有黑框。
+ *
+ * 设置响应式说明:
+ *   行数/速度来自 useSettings()(localStorage),改行数时从已拉取的
+ *   gallery 重建分桶,不重新请求;loadedUrls 按 url 键记录,重建后
+ *   加载状态依然有效。卡片宽度走 <html> 上的 --card-w(settings.ts)。
  * ============================================================ */
 
 interface RowItem {
@@ -23,7 +28,7 @@ interface RowItem {
 
 const { focalStyle } = useFocal();
 const lb = useLightbox();
-const banner = useErrorBanner();
+const { settings } = useSettings();
 
 const gallery = ref<Image[]>([]);
 const rows = ref<RowItem[][]>([]);
@@ -35,6 +40,14 @@ const loadedUrls = ref(new Set<string>());
 const fallbackThumb = ref(new Set<string>());
 
 let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 按行数把图片轮转分桶 + 行内打乱(纯函数,便于测试/重建) */
+function buildRows(list: Image[], n: number): RowItem[][] {
+  const buckets: RowItem[][] = Array.from({ length: n }, () => []);
+  list.forEach((img, gi) => buckets[gi % n].push({ img, gi }));
+  buckets.forEach((b) => shuffle(b));
+  return buckets;
+}
 
 function forceReady() {
   if (allLoaded.value) return;
@@ -68,14 +81,18 @@ const displayRows = computed<RowItem[][]>(() =>
 function trackStyle(rowIndex: number): Record<string, string> {
   return {
     animationDirection: rowIndex % 2 === 1 ? 'reverse' : 'normal',
-    animationDuration: (40 + rowIndex * 6) + 's',
-    '--card-w': CONFIG.cardWidth + 'px',
+    animationDuration: ((40 + rowIndex * 6) / settings.value.speed) + 's',
   };
 }
 
 function openLightbox(gi: number) {
   lb.open(gallery.value.map((i) => ({ url: i.url, name: i.name })), gi);
 }
+
+/* 行数变更 → 从已拉取数据重建分桶(不重新请求) */
+watch(() => settings.value.rows, (n) => {
+  if (gallery.value.length > 0) rows.value = buildRows(gallery.value, n);
+});
 
 onMounted(async () => {
   const { images } = await loadImages();
@@ -84,11 +101,7 @@ onMounted(async () => {
   gallery.value = shuffled;
   total.value = shuffled.length;
 
-  const n = CONFIG.rows;
-  const buckets: RowItem[][] = Array.from({ length: n }, () => []);
-  shuffled.forEach((img, gi) => buckets[gi % n].push({ img, gi }));
-  buckets.forEach((b) => shuffle(b));
-  rows.value = buckets;
+  rows.value = buildRows(shuffled, settings.value.rows);
 
   if (total.value > 0) {
     // 30 秒兜底:个别图片卡死也强制启动(失败图显示深灰底)

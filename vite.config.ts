@@ -35,13 +35,15 @@ export default defineConfig(({ mode }) => {
             input: {
               index: r('./index.html'),
               gallery: r('./gallery.html'),
+              settings: r('./settings.html'),
               '404': r('./404.html'),
             },
           },
         },
     test: {
       environment: 'jsdom',
-      include: ['src/**/*.test.ts'],
+      include: ['src/**/*.{test,spec}.ts'],
+      setupFiles: ['./src/test-setup.ts'],
     },
   };
 });

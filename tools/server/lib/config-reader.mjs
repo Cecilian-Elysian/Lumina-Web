@@ -453,3 +453,213 @@ export async function deleteAlbum(id) {
 export function getByPath(obj, p) {
   return p.split('.').reduce((c, k) => (c == null ? undefined : c[k]), obj);
 }
+
+/* ============================================================
+ * 标签(tags)读写
+ * ------------------------------------------------------------
+ * 文件:src/site/tags.ts
+ * 格式:{ "https://.../a.jpg": ["德克萨斯", "立绘"], ... }
+ *
+ * 规则:
+ *   - 键 = Image.url(原图直链),值 = string[](写回时去空/去重)
+ *   - 写回时 url 按字典序排序(diff 稳定)
+ *   - 浏览器侧 localStorage(lumina.tags.local)可临时覆盖,
+ *     null = 清空该图全部标签
+ * ============================================================ */
+
+const TAGS_HEADER = `/* ============================================================
+ * Lumina — 图片标签数据(纯字面量)
+ * ------------------------------------------------------------
+ * 由本地 manager 可视化编辑器(标签 Tab)离线产出。
+ * 格式:{ [图片原图 url]: string[] 标签数组 }
+ *
+ * ★ 键约定:键永远是 Image.url(原图直链),不是 thumb
+ *   (历史教训:焦点曾因用 thumb 查表 100% 失效)。
+ *
+ * 注意:纯字面量文件(禁 import/类型注解),由 tools 服务端 acorn 解析
+ *
+ * 浏览器侧(可在 DevTools 临时覆盖,null = 清空该图标签):
+ *   localStorage.setItem('lumina.tags.local', JSON.stringify({
+ *     'https://...jpg': ['德克萨斯', '立绘']
+ *   }))
+ * ============================================================ */\n`;
+
+/**
+ * 清洗 tags 文档(纯函数):剔除空 tag、去重、url 字典序排序。
+ * @param {Record<string, string[]>} doc
+ * @returns {{ doc: Record<string, string[]>, tagCount: number }}
+ */
+export function sanitizeTagsDoc(doc) {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+    throw new Error('tags 文档必须是普通对象');
+  }
+  const out = {};
+  let tagCount = 0;
+  for (const [url, tags] of Object.entries(doc)) {
+    if (typeof url !== 'string' || url.length === 0) {
+      throw new Error(`标签键必须是非空字符串(url),实际: ${JSON.stringify(url)}`);
+    }
+    if (!Array.isArray(tags)) {
+      throw new Error(`url "${url}" 的标签必须是数组,实际 ${typeof tags}`);
+    }
+    const cleaned = [];
+    for (const t of tags) {
+      if (typeof t !== 'string') {
+        throw new Error(`url "${url}" 存在非字符串标签: ${JSON.stringify(t)}`);
+      }
+      const v = t.trim();
+      if (!v) continue;
+      if (v.length > 32) {
+        throw new Error(`url "${url}" 标签过长(>32 字符): "${v}"`);
+      }
+      if (!cleaned.includes(v)) cleaned.push(v);
+    }
+    out[url] = cleaned;
+    tagCount += cleaned.length;
+  }
+  // url 字典序排序
+  const sorted = {};
+  for (const k of Object.keys(out).sort()) sorted[k] = out[k];
+  return { doc: sorted, tagCount };
+}
+
+/**
+ * 校验 Manager 发来的 tags 文档,失败抛错(含具体原因)。
+ * sanitizeTagsDoc 之外的额外规则:不允许空文档直接覆盖清库(防误操作)。
+ * @throws 若不合法
+ */
+export function validateTagsDoc(doc) {
+  const { doc: cleaned } = sanitizeTagsDoc(doc); // 复用清洗(含类型/长度校验)
+  if (Object.keys(cleaned).length === 0) {
+    throw new Error('tags 文档为空 — 如需清空全部标签请手动编辑文件(防误操作)');
+  }
+}
+
+/**
+ * 读取 src/site/tags.ts。文件不存在返回空对象。
+ * @returns {Promise<Record<string, string[]>>}
+ */
+export async function readTags() {
+  const viewerDir = getViewerDir();
+  try {
+    const raw = await fs.readFile(path.join(viewerDir, 'src', 'site', 'tags.ts'), 'utf8');
+    return safeParseObject(raw, 'TAGS');
+  } catch (e) {
+    if (e.code === 'ENOENT') return {};
+    throw e;
+  }
+}
+
+/**
+ * 把完整 tags 对象写回 src/site/tags.ts(覆盖)。
+ * @param {Record<string, string[]>} doc
+ */
+export async function writeTags(doc) {
+  const { doc: cleaned, tagCount } = sanitizeTagsDoc(doc);
+  const viewerDir = getViewerDir();
+  const body = `export const TAGS = ${JSON.stringify(cleaned, null, 2)};\n`;
+  await fs.writeFile(path.join(viewerDir, 'src', 'site', 'tags.ts'), TAGS_HEADER + body, 'utf8');
+  return { ok: true, imageCount: Object.keys(cleaned).length, tagCount };
+}
+
+/* ============================================================
+ * 站点配置(config.ts)白名单写入
+ * ------------------------------------------------------------
+ * Manager 的「配置」Tab 只允许改版面/拉取相关字段;
+ * mode / token / 字段映射等敏感或危险键一律拒改,
+ * 且写回时保留原值(从现文件解析后合并,不会漂移)。
+ *
+ * ⚠ config.ts 由生成头 + JSON 字面量重写,手工注释会丢失
+ *   (与 focalPoints/albums 的生成模式一致)。
+ * ============================================================ */
+
+/** 允许 Manager 修改的 CONFIG 字段 */
+export const CONFIG_WRITE_WHITELIST = [
+  'rows',           // 图片墙行数
+  'cardWidth',      // 卡片宽度 px
+  'perPage',        // 拉取数量上限
+  'thumbWidth',     // 缩略图宽度(实测 7bu.top 不支持改写,保持 null)
+  'lazyRootMargin', // 懒加载根边距
+];
+
+const CONFIG_HEADER = `/* ============================================================
+ * Lumina — 全局配置(纯字面量数据)
+ * ------------------------------------------------------------
+ * ★ 本文件同时被两方读取:
+ *   1. Vite(src/site/composables.ts 等) — 直接 import
+ *   2. tools/server(本地 Manager) — 用 acorn 静态解析
+ *
+ * ★ 纯字面量约束:
+ *   - 禁止 import / 类型注解 / as const / 模板字符串
+ *   - 只允许 Object / Array / string / number / boolean / null
+ *
+ * ★ 本文件由 Manager「配置」Tab 或手工编辑维护:
+ *   - 经 Manager 保存会重写本文件(手工注释会丢失,字段值保留)
+ *   - token 仅 direct 调试模式填写;proxy 模式保持空串,
+ *     真实 token 存于 Cloudflare 环境变量 QUBU_TOKEN
+ * ============================================================ */
+`;
+
+/**
+ * 校验 Manager 发来的 config patch,失败抛错(含具体原因)。
+ * 规则:
+ *   - 必须是普通对象且至少一个键
+ *   - 只允许白名单键(mode/token 等一律拒绝)
+ *   - rows: 1–10 整数;cardWidth: 150–600 整数;perPage: 1–200 整数
+ *   - thumbWidth: 100–2000 整数或 null
+ *   - lazyRootMargin: 形如 "200px"(1–16 字符)
+ * @throws 若不合法
+ */
+export function validateConfigPatch(patch) {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    throw new Error('config patch 必须是普通对象');
+  }
+  const keys = Object.keys(patch);
+  if (keys.length === 0) {
+    throw new Error('config patch 至少包含一个字段');
+  }
+  for (const k of keys) {
+    if (!CONFIG_WRITE_WHITELIST.includes(k)) {
+      throw new Error(`不允许修改的字段: "${k}"(白名单: ${CONFIG_WRITE_WHITELIST.join(', ')})`);
+    }
+    const v = patch[k];
+    if (k === 'rows' || k === 'cardWidth' || k === 'perPage') {
+      if (!Number.isInteger(v)) throw new Error(`${k} 必须是整数,实际 ${JSON.stringify(v)}`);
+      const range = { rows: [1, 10], cardWidth: [150, 600], perPage: [1, 200] }[k];
+      if (v < range[0] || v > range[1]) {
+        throw new Error(`${k} 超出范围 ${range[0]}–${range[1]},实际 ${v}`);
+      }
+    } else if (k === 'thumbWidth') {
+      if (v !== null && (!Number.isInteger(v) || v < 100 || v > 2000)) {
+        throw new Error('thumbWidth 必须是 100–2000 的整数或 null');
+      }
+    } else if (k === 'lazyRootMargin') {
+      if (typeof v !== 'string' || !/^\d+px$/.test(v) || v.length > 16) {
+        throw new Error('lazyRootMargin 必须是形如 "200px" 的字符串');
+      }
+    }
+  }
+}
+
+/**
+ * 白名单合并(纯函数):current 的全部字段保留,patch 覆盖白名单键。
+ * @param {Object} current 从 config.ts 解析出的现值
+ * @param {Object} patch    经过 validateConfigPatch 的增量
+ */
+export function mergeConfigPatch(current, patch) {
+  return Object.assign({}, current, patch);
+}
+
+/**
+ * 把 patch 合并进现 CONFIG 并重写 src/site/config.ts。
+ * @param {Object} patch 白名单增量
+ */
+export async function writeConfig(patch) {
+  validateConfigPatch(patch);
+  const current = await readViewerConfig();
+  const merged = mergeConfigPatch(current, patch);
+  const viewerDir = getViewerDir();
+  const body = `export const CONFIG = ${JSON.stringify(merged, null, 2)};\n`;
+  await fs.writeFile(path.join(viewerDir, 'src', 'site', 'config.ts'), CONFIG_HEADER + body, 'utf8');
+  return { ok: true, updated: Object.keys(patch) };
+}

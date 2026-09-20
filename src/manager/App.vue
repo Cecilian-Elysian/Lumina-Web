@@ -2,16 +2,22 @@
 import { ref, computed } from 'vue';
 import FocalTab from './FocalTab.vue';
 import AlbumTab from './AlbumTab.vue';
+import TagTab from './TagTab.vue';
+import ConfigTab from './ConfigTab.vue';
 import { provideManagerState, useToast } from './api';
 
 provideManagerState();
 
-const activeTab = ref<'focal' | 'album'>('focal');
+const activeTab = ref<'focal' | 'album' | 'tags' | 'config'>('focal');
 const t = useToast();
 
-const subText = computed(() => activeTab.value === 'focal'
-  ? '为每张图标记主角位置,人脸再也不会被切'
-  : '手动图集:创建图集 → 拖图片到图集。前端按图集分 section 展示');
+const subTexts: Record<typeof activeTab.value, string> = {
+  focal: '为每张图标记主角位置,人脸再也不会被切',
+  album: '手动图集:创建图集 → 拖图片到图集。前端按图集分 section 展示',
+  tags: '给图片打标签:图集页搜索与灯箱都会用到',
+  config: '站点配置:行数/卡片宽度/拉取上限(白名单字段)',
+};
+const subText = computed(() => subTexts[activeTab.value]);
 </script>
 
 <template>
@@ -35,10 +41,22 @@ const subText = computed(() => activeTab.value === 'focal'
       :class="{ 'tab-active': activeTab === 'album' }"
       @click="activeTab = 'album'"
     >📚 图集</button>
+    <button
+      class="tab"
+      :class="{ 'tab-active': activeTab === 'tags' }"
+      @click="activeTab = 'tags'"
+    >🏷 标签</button>
+    <button
+      class="tab"
+      :class="{ 'tab-active': activeTab === 'config' }"
+      @click="activeTab = 'config'"
+    >⚙ 配置</button>
   </nav>
 
   <FocalTab v-show="activeTab === 'focal'" />
   <AlbumTab v-show="activeTab === 'album'" />
+  <TagTab v-show="activeTab === 'tags'" />
+  <ConfigTab v-show="activeTab === 'config'" />
 
   <div class="toast" :class="[t.type.value ? 'toast-' + t.type.value : '', { hidden: !t.visible.value }]">
     {{ t.msg.value }}

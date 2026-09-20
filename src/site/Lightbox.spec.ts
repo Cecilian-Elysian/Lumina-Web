@@ -80,3 +80,50 @@ describe('Lightbox 组件', () => {
     wrapper.unmount();
   });
 });
+
+describe('Lightbox 缩放', () => {
+  const lb = useLightbox();
+
+  beforeEach(() => {
+    lb.close();
+  });
+
+  it('+ / - / 0 键缩放并夹紧范围', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    expect(lb.scale.value).toBe(1);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '+' }));
+    expect(lb.scale.value).toBe(1.25);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '0' }));
+    expect(lb.scale.value).toBe(1);
+
+    for (let i = 0; i < 20; i++) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '=' }));
+    }
+    expect(lb.scale.value).toBe(4); // max
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '-' }));
+    expect(lb.scale.value).toBe(3.75);
+    wrapper.unmount();
+  });
+
+  it('换图与关闭后缩放复位', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    lb.zoomBy(1.5);
+    expect(lb.scale.value).toBe(2.5);
+
+    lb.next();
+    expect(lb.scale.value).toBe(1);
+
+    lb.zoomBy(1.5);
+    lb.close();
+    lb.open(items, 0);
+    expect(lb.scale.value).toBe(1);
+    wrapper.unmount();
+  });
+});

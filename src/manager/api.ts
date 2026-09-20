@@ -1,9 +1,10 @@
 /* ============================================================
  * Manager API 层 — 全部本地 tools/server 端点封装
  * ------------------------------------------------------------
- *   /api/viewer-config   读 src/site/config.ts(经 acorn 解析)
+ *   /api/viewer-config   读/白名单写 src/site/config.ts
  *   /api/focal-points    读/写 src/site/focalPoints.ts
  *   /api/albums(+crud)   读/写 src/site/albums.ts
+ *   /api/tags            读/写 src/site/tags.ts
  *   /api/proxy-images    本地代理拉图床列表
  *   /api/sync-deploy     git 提交并推送指定数据文件
  *   /api/run-ai          AI 批量分析(SSE 流)
@@ -11,7 +12,7 @@
 import { ref, inject, provide } from 'vue';
 import type { InjectionKey, Ref } from 'vue';
 import { getByPath } from '@/shared/utils';
-import type { FocalPoint, AlbumsDoc } from '@/shared/types';
+import type { FocalPoint, AlbumsDoc, TagsDoc } from '@/shared/types';
 
 /* ── 通用请求 ────────────────────────────── */
 
@@ -82,12 +83,23 @@ export function useManagerState(): ManagerState {
 export interface ViewerConfig {
   mode: string;
   apiBase: string;
+  rows?: number;
+  cardWidth?: number;
   perPage: number;
+  thumbWidth?: number | null;
+  lazyRootMargin?: string;
   imgField: string;
   imgUrlField: string;
   imgNameField: string;
   fallbackImages: string[];
 }
+
+/** 允许写入 config.ts 的白名单字段(与服务端 CONFIG_WRITE_WHITELIST 一致) */
+export const CONFIG_WHITELIST = [
+  'rows', 'cardWidth', 'perPage', 'thumbWidth', 'lazyRootMargin',
+] as const;
+
+export type ConfigPatch = Partial<Pick<ViewerConfig, (typeof CONFIG_WHITELIST)[number]>>;
 
 export async function loadViewerConfig(): Promise<ViewerConfig | null> {
   const r = await api<{ ok: boolean; data?: ViewerConfig; error?: string }>('GET', '/api/viewer-config');
@@ -96,6 +108,16 @@ export async function loadViewerConfig(): Promise<ViewerConfig | null> {
     return null;
   }
   return r.data;
+}
+
+/** 白名单合并写回 config.ts(服务端二次校验) */
+export async function saveConfig(patch: ConfigPatch): Promise<string[] | null> {
+  const r = await api<{ ok: boolean; updated?: string[]; error?: string }>('POST', '/api/viewer-config', patch);
+  if (!r.ok) {
+    toast('保存配置失败: ' + (r.error ?? ''), 'error');
+    return null;
+  }
+  return r.updated ?? [];
 }
 
 export async function loadFocalPoints(): Promise<Record<string, FocalPoint>> {
@@ -159,6 +181,27 @@ export async function deleteAlbum(id: string): Promise<number | null> {
     return null;
   }
   return r.removedCount ?? 0;
+}
+
+/* ── 标签(tags) ──────────────────────────── */
+
+export async function loadTags(): Promise<TagsDoc | null> {
+  const r = await api<{ ok: boolean; data?: TagsDoc; error?: string }>('GET', '/api/tags');
+  if (!r.ok) {
+    toast('读取 tags.ts 失败: ' + (r.error ?? ''), 'error');
+    return null;
+  }
+  return r.data ?? {};
+}
+
+/** 返回写入的图片数(打标签的图) */
+export async function saveTags(doc: TagsDoc): Promise<number | null> {
+  const r = await api<{ ok: boolean; imageCount?: number; error?: string }>('POST', '/api/tags', doc);
+  if (!r.ok) {
+    toast('保存失败: ' + (r.error ?? ''), 'error');
+    return null;
+  }
+  return r.imageCount ?? 0;
 }
 
 /* ── 图片列表(代理 + 兜底) ───────────────── */

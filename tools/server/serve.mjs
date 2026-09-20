@@ -14,6 +14,7 @@
  *   GET  /                              → 302 → /manager/
  *   GET  /manager/*                     → dist-manager/ 内静态文件(缺失自动构建)
  *   GET  /api/viewer-config             → 读 src/site/config.ts
+ *   POST /api/viewer-config             → 白名单合并写回(仅版面/拉取字段)
  *   GET  /api/focal-points              → 读 src/site/focalPoints.ts
  *   POST /api/focal-points              → 写 src/site/focalPoints.ts
  *   GET  /api/proxy-images              → 尝试拉取 viewer 上游图床
@@ -24,6 +25,8 @@
  *   POST /api/albums/add                → 创建新图集,返回 id
  *   POST /api/albums/rename             → 重命名图集
  *   POST /api/albums/delete             → 删除图集(旗下 url 自动降级为未分组)
+ *   GET  /api/tags                      → 读 src/site/tags.ts
+ *   POST /api/tags                      → 整体覆盖写回
  *
  * 用法:
  *   node server/serve.mjs               (默认:检查+装依赖+开浏览器)
@@ -51,6 +54,11 @@ import {
   addAlbum,
   renameAlbum,
   deleteAlbum,
+  readTags,
+  writeTags,
+  validateTagsDoc,
+  writeConfig,
+  validateConfigPatch,
   getByPath,
 } from './lib/config-reader.mjs';
 
@@ -352,6 +360,8 @@ function runCommand(command, args, options = {}) {
 const SYNCABLE_FILES = {
   'src/site/focalPoints.ts': 'chore: update image focal points',
   'src/site/albums.ts': 'chore: update albums',
+  'src/site/tags.ts': 'chore: update image tags',
+  'src/site/config.ts': 'chore: update site config',
 };
 
 /**
@@ -426,6 +436,8 @@ async function handle(req, res, url) {
           rows: cfg.rows,
           cardWidth: cfg.cardWidth,
           perPage: cfg.perPage,
+          thumbWidth: cfg.thumbWidth,
+          lazyRootMargin: cfg.lazyRootMargin,
           imgField: cfg.imgField,
           imgUrlField: cfg.imgUrlField,
           imgThumbField: cfg.imgThumbField,
@@ -435,6 +447,22 @@ async function handle(req, res, url) {
       }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/viewer-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const patch = JSON.parse(body);
+      validateConfigPatch(patch);
+      const r = await writeConfig(patch);
+      log('💾', `写回 config.ts(${r.updated.join(', ')})`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(r));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: e.message }));
     }
     return;
@@ -614,6 +642,35 @@ async function handle(req, res, url) {
       log('🗑️ ', `删除图集: ${id} (旗下 ${r.removedCount} 张图降级为未分组)`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(r));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // ── 标签(tags)────────────────────────────────
+  if (pathname === '/api/tags' && req.method === 'GET') {
+    try {
+      const data = await readTags();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, data }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/tags' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const doc = JSON.parse(body);
+      validateTagsDoc(doc);
+      const r = await writeTags(doc);
+      log('💾', `写入 tags.ts (图片 ${r.imageCount} 张, 标签 ${r.tagCount} 个)`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, ...r }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: e.message }));

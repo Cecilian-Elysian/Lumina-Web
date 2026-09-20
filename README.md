@@ -90,6 +90,7 @@ npx wrangler pages deploy dist --project-name=lumina --branch=main
 
 - **图床分页合并是"不设上限"的**:7bu.top 单页最多 40 张,代理会**并发拉所有分页**。如果图床总图片数很多(> 400 张),单次 `/api/images` 请求会瞬时发起十几个并发请求打到图床。建议把图床图片数量控制在 **400 张以内**(约 10 个分页以内);代理层在 `last_page > 10` 时会在 Cloudflare 控制台打警告日志,可作为运维信号。
 - **AI 批量焦点分析是 merge 而非覆盖**:重跑 `node ai/build-focal-points.mjs` 不会再清掉手工标注的焦点(详见 `tools/server/lib/config-reader.mjs` 的 `mergeFocalPoints`)。
+- **Manager「配置」Tab 保存会重写 `config.ts`**:只允许白名单字段(rows/cardWidth/perPage/thumbWidth/lazyRootMargin),mode/token/字段映射**保留原值不可改**;但文件会被生成头 + JSON 字面量整体重写,手工注释会丢失。
 
 
 ---
@@ -119,12 +120,13 @@ Lumina-Web/
 |
 ├── index.html                       # 主页 Vite 入口(window.__VIEW__ = 'home')
 ├── gallery.html                     # 图集页 Vite 入口('gallery')
+├── settings.html                    # 设置页 Vite 入口('settings',访客偏好)
 ├── 404.html                         # 404 页 Vite 入口('notfound')
 ├── manager.html                     # Manager Vite 入口(仅本机构建,不部署)
 |
 ├── src/
 │   ├── shared/                      # 前后端共享:类型 / 工具 / API 客户端
-│   │   ├── types.ts                 # Image / FocalPoint / AlbumMeta / AlbumsDoc 契约
+│   │   ├── types.ts                 # Image / FocalPoint / AlbumMeta / AlbumsDoc / TagsDoc 契约
 │   │   ├── utils.ts                 # 纯函数(focalStyle / fileName / srcSet...)
 │   │   └── apiClient.ts             # 图片列表获取 + mapImage 字段映射
 │   │
@@ -132,24 +134,29 @@ Lumina-Web/
 │   │   ├── config.ts                # 配置(纯字面量,tools 服务端 acorn 解析)
 │   │   ├── focalPoints.ts           # 焦点数据(由 tools/ 产出,纯字面量)
 │   │   ├── albums.ts                # 图集元数据 + url 映射(纯字面量)
-│   │   ├── composables.ts           # useFocal / useAlbums / useLightbox / useErrorBanner
-│   │   ├── main.ts                  # Viewer 入口
+│   │   ├── tags.ts                  # 图片标签 url→tags(纯字面量)
+│   │   ├── settings.ts              # 访客偏好单例(localStorage → CSS 变量)
+│   │   ├── composables.ts           # useFocal / useAlbums / useTags / useLightbox / useErrorBanner
+│   │   ├── main.ts                  # Viewer 入口(initSettings → mount)
 │   │   ├── App.vue                  # 按 window.__VIEW__ 切换视图
-│   │   ├── HomeView.vue             # 流动墙(等全部图加载完成才滚动,根治黑框)
-│   │   ├── GalleryView.vue          # 图集网格 + 搜索
+│   │   ├── HomeView.vue             # 流动墙(响应式行数/速度,等全部图加载完成才滚动)
+│   │   ├── GalleryView.vue          # 图集网格 + 标签搜索 + 「全部」瀑布流双视图
+│   │   ├── SettingsView.vue         # 设置页(行数/宽度/速度/动画,实时预览)
 │   │   ├── NotFoundView.vue         # 404
-│   │   ├── Lightbox.vue             # 灯箱(键盘 / 预加载相邻图)
+│   │   ├── Lightbox.vue             # 灯箱(缩放/平移/下载/标签/键盘/预加载)
 │   │   └── styles.css               # 全部样式(含主题变量、动画、响应式)
 │   │
 │   └── manager/                     # Manager(本地编辑器)
 │       ├── main.ts                  # Manager 入口
-│       ├── api.ts                   # 编辑器 API 层(图片列表 / 焦点 / 图集 / 同步)
-│       ├── App.vue                  # Tab 切换(焦点 / 图集)
+│       ├── api.ts                   # 编辑器 API 层(配置/图片/焦点/图集/标签/同步/AI)
+│       ├── App.vue                  # Tab 切换(焦点 / 图集 / 标签 / 配置)
 │       ├── FocalTab.vue             # 焦点列表 + AI 批量分析(SSE)
 │       ├── FocalEditor.vue          # 单图焦点可视化编辑 + 拖拽微调
 │       ├── AlbumTab.vue             # 图集 chips + 图片网格 + 拖拽归类
 │       ├── AlbumChip.vue            # 单个图集 chip(拖放目标)
 │       ├── AlbumModal.vue           # 新建 / 重命名图集
+│       ├── TagTab.vue               # 图片打标签(chips 编辑 + 候选 datalist)
+│       ├── ConfigTab.vue            # 站点配置表单(白名单字段)
 │       └── styles.css               # Manager 样式
 |
 ├── functions/api/images.js          # Pages Function 代理(服务端注入 token)
@@ -162,7 +169,7 @@ Lumina-Web/
 │   ├── server/                      # 启动器 + HTTP 服务器
 │   │   ├── serve.mjs                # 入口(自检 + 装依赖 + 自动构建 manager + 开浏览器)
 │   │   └── lib/
-│   │       └── config-reader.mjs    # 共享:acorn 安全解析 src/site/*.ts 数据文件
+│   │       └── config-reader.mjs    # 共享:acorn 安全解析 + tags/config 白名单读写
 │   │
 │   ├── test/                        # node 侧测试(独立 vitest 配置)
 │   └── ai/                          # AI 工具(命令行)
@@ -171,7 +178,7 @@ Lumina-Web/
 │
 ├── dist/                            # Viewer 构建产物(Git 忽略,部署)
 ├── dist-manager/                    # Manager 构建产物(Git 忽略,仅本机)
-├── vite.config.ts                   # 双模式构建(mode=manager → dist-manager)
+├── vite.config.ts                   # 多入口构建(mode=manager → dist-manager)
 ├── wrangler.toml                    # Cloudflare Pages 构建配置
 └── .dev.vars                        # 本地开发密钥(git 忽略,不入库)
 ```
@@ -185,9 +192,14 @@ Lumina-Web/
 - [x] 图集搭建
 - [x] 图集页(用户手动图集)+ 本地管理器拖拽
 - [x] 焦点编辑器 + AI 焦点识别
-- [ ] 设置搭建
+- [x] 标签系统(Manager 打标签 → 图集页标签搜索 / 灯箱标签)
+- [x] 设置页(访客偏好:行数/宽度/速度/动画,localStorage)
+- [x] 展示增强(灯箱缩放/平移/下载、「全部」瀑布流视图)
+- [ ] 设置搭建(站长端深水区:数据源切换 UI)
 
 ## 日志记录
+
+- 2026-09-20 三阶段功能落地。**访客设置页**:`settings.html` + `site/settings.ts` 单例(localStorage `lumina.settings`,逐字段 clamp),行数/卡片宽度(`--card-w` 写 `<html>`)/滚动速度/动画开关(`html[data-anim='off']`),`HomeView` 行数变更从已拉取数据重建分桶不重拉,`trackStyle` 时长按速度倍率缩放。**标签系统**:新增纯字面量 `site/tags.ts`(TAGS,键=原图 url)+ `composables.useTags()`(LS `lumina.tags.local` 覆盖,null=清空);图集页搜索扩展到标签,图集卡片渲染 top-6 标签 chips(点击填入搜索);Manager 新增 🏷 标签 Tab(`TagTab.vue`:chips 编辑 + 候选 datalist + 逗号批量),`serve.mjs` 加 `GET/POST /api/tags`,`config-reader.mjs` 加 `readTags/writeTags/sanitizeTagsDoc/validateTagsDoc`,`SYNCABLE_FILES` 纳入 `tags.ts`。**展示增强**:灯箱滚轮/双击/`+`-`0` 键缩放(1–4x)+ 放大拖拽平移(pointer capture)+ 下载按钮 + 当前图标签;图集页「图集 | 全部」双视图(全部 = CSS columns 瀑布流,thumb 加载,点图开灯箱)。**Manager 站点配置**:`ConfigTab.vue` 表单(白名单 5 字段)+ `serve.mjs` `POST /api/viewer-config` + `config-reader.mjs` `validateConfigPatch/mergeConfigPatch/writeConfig`(mode/token 拒改且合并保留原值;⚠ 重写 config.ts 会丢手工注释),`SYNCABLE_FILES` 纳入 `config.ts`。**测试基建修复**:vite 测试 include 补 `*.spec.ts`(Lightbox.spec 此前从未运行);`src/test-setup.ts` 垫片 Node 22 webstorage 空壳抢占 localStorage 问题。测试:根目录 46 项(新增 settings 9 / tags 8 / GalleryView 8 / Lightbox 缩放 2)+ tools 63 项(新增 tags-config 17)。
 
 - 2026-09-15 全量重构为 Vue 3 + Vite + TypeScript:原 `js/`(8 文件)+ `css/`(2 文件)+ 本地 `manager/`(3 文件)合并为 `src/`(shared/site/manager 三层,约 20 文件)。多入口构建(index/gallery/404 → `dist/` 部署;manager → `dist-manager/` 仅本机)。**根治黑框 bug**:`HomeView.vue` 等全部图片 `@load/@error` 完成才克隆行副本 + `.ready` 滚动(旧 `main.js` 在首图加载后就 `finalizeWall`,永久克隆占位卡),保留 30s 强制启动兜底。**修焦点查表键**:按 `Image.url`(原图域)而非 thumb 查 `FOCAL_POINTS`。**修图集 fallback**:移除遗留 legacy galleries 链。数据文件 `src/site/{config,focalPoints,albums}.ts` 保持纯字面量(禁 import/类型注解),`tools` 服务端改用 acorn `sourceType: module` 解析 `export const`;`serve.mjs` 改为服务 `dist-manager/`(缺失自动 `npm run build:manager`),`/api/sync-deploy` 接受 body `{file}` 白名单同步任意数据文件。删除 `tools/build-pages.mjs`,wrangler 构建命令改 `npm run build`。测试:vitest 组件测试(Lightbox/apiClient/utils,根目录)+ node 侧测试(parse-config 等 46 项,tools/)。
 - 2026-09-10 主页开屏动画 + 顺序加载:`js/main.js` 的 `renderWall()` 重写为 async,预创建空行 → 跨行打乱队列 → 一张一张串行 `await loadOneImage()` → 全部完成 → 克隆副本 → 加 `.wall.ready` 启动无缝循环。`css/style.css` 新增 `@keyframes fadeInUp`(参考 Cecilian-Hub `PageTransition` 视觉效果,20px 下方淡入,0.6s · cubic-bezier(0.16, 1, 0.3, 1))+ `.is-loading`/`.is-loaded` class。`.row-track` 滚动动画改为 `.wall.ready` 条件触发,加载完才启动。`index.html` 移除 `<p id="loading">` 占位。
