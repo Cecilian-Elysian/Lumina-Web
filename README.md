@@ -135,7 +135,7 @@ Lumina-Web/
 │   │   ├── focalPoints.ts           # 焦点数据(由 tools/ 产出,纯字面量)
 │   │   ├── albums.ts                # 图集元数据 + url 映射(纯字面量)
 │   │   ├── tags.ts                  # 图片标签 url→tags(纯字面量)
-│   │   ├── settings.ts              # 访客偏好单例(localStorage → CSS 变量)
+│   │   ├── settings.ts              # 访客偏好单例(localStorage → CSS 变量,含深/浅主题)
 │   │   ├── composables.ts           # useFocal / useAlbums / useTags / useLightbox / useErrorBanner
 │   │   ├── main.ts                  # Viewer 入口(initSettings → mount)
 │   │   ├── App.vue                  # 按 window.__VIEW__ 切换视图
@@ -193,12 +193,16 @@ Lumina-Web/
 - [x] 图集页(用户手动图集)+ 本地管理器拖拽
 - [x] 焦点编辑器 + AI 焦点识别
 - [x] 标签系统(Manager 打标签 → 图集页标签搜索 / 灯箱标签)
-- [x] 设置页(访客偏好:行数/宽度/速度/动画,localStorage)
+- [x] 设置页(访客偏好:主题/行数/宽度/速度/动画,localStorage)
+- [x] 深色/浅色主题切换(设置页深/浅两档,防闪烁,CSS 变量组)
+- [x] SEO 基建(OG 分享卡片/canonical/sitemap/robots,404 noindex)
 - [x] 展示增强(灯箱缩放/平移/下载、「全部」瀑布流视图)
 - [ ] 设置搭建(站长端深水区:数据源切换 UI)
 
 ## 日志记录
 
+- 2026-09-25 (v2) SEO 基建。index/gallery/settings 三页 `<head>` 加 `og:type/site_name/title/description/url/image/image:alt` + `twitter:card`(设置页 summary,其余 summary_large_image) + `canonical`(域名 illusium.pages.dev);og:image 用图床直链(`bu.dusays.com/.../6a8da73da2991.jpg`,可随时换一行)。404.html 加 `robots: noindex`(不加 OG)。新建 `public/sitemap.xml`(3 URL)与 `public/robots.txt`(Allow all + Sitemap 行),Vite 默认拷贝 public/ → dist/。
+- 2026-09-25 深色/浅色主题切换。`settings.ts` 加 `theme: 'dark'|'light'` 字段(默认 dark,loadSettings 严格白名单校验,非法值回退),`applySettings` 写 `html.dataset.theme` + 动态更新 `<meta name="theme-color">`(#14161a ↔ #f6f7f9)。`styles.css` 变量化改造:约 20 处硬编码深色收敛为 `--nav-bg/--nav-link/--glass-bg/--chip-bg/--chip-bg-hover/--glass-border/--glass-border-strong/--img-bg` 8 个变量,新增 `:root[data-theme='light']` 浅色覆盖组(玻璃面改暗透明,`#f6f7f9→#eceef3` 渐变底);灯箱遮罩/按钮/tag 保持恒暗(看图惯例),toggle 旋钮加投影保两态可辨。`SettingsView` 加「主题」行(view-switch 深浅分段按钮,settings 单例直写全站响应)。4 个入口 HTML(index/gallery/settings/404)`<head>` 加防闪烁内联脚本:解析期读 localStorage 提前置 `data-theme`,浅色用户刷新无白闪。测试:settings.test.ts 13 项(+4:light/dark meta 同步、非法回退、LS 预置读出),全量 50 项通过。
 - 2026-09-20 三阶段功能落地。**访客设置页**:`settings.html` + `site/settings.ts` 单例(localStorage `lumina.settings`,逐字段 clamp),行数/卡片宽度(`--card-w` 写 `<html>`)/滚动速度/动画开关(`html[data-anim='off']`),`HomeView` 行数变更从已拉取数据重建分桶不重拉,`trackStyle` 时长按速度倍率缩放。**标签系统**:新增纯字面量 `site/tags.ts`(TAGS,键=原图 url)+ `composables.useTags()`(LS `lumina.tags.local` 覆盖,null=清空);图集页搜索扩展到标签,图集卡片渲染 top-6 标签 chips(点击填入搜索);Manager 新增 🏷 标签 Tab(`TagTab.vue`:chips 编辑 + 候选 datalist + 逗号批量),`serve.mjs` 加 `GET/POST /api/tags`,`config-reader.mjs` 加 `readTags/writeTags/sanitizeTagsDoc/validateTagsDoc`,`SYNCABLE_FILES` 纳入 `tags.ts`。**展示增强**:灯箱滚轮/双击/`+`-`0` 键缩放(1–4x)+ 放大拖拽平移(pointer capture)+ 下载按钮 + 当前图标签;图集页「图集 | 全部」双视图(全部 = CSS columns 瀑布流,thumb 加载,点图开灯箱)。**Manager 站点配置**:`ConfigTab.vue` 表单(白名单 5 字段)+ `serve.mjs` `POST /api/viewer-config` + `config-reader.mjs` `validateConfigPatch/mergeConfigPatch/writeConfig`(mode/token 拒改且合并保留原值;⚠ 重写 config.ts 会丢手工注释),`SYNCABLE_FILES` 纳入 `config.ts`。**测试基建修复**:vite 测试 include 补 `*.spec.ts`(Lightbox.spec 此前从未运行);`src/test-setup.ts` 垫片 Node 22 webstorage 空壳抢占 localStorage 问题。测试:根目录 46 项(新增 settings 9 / tags 8 / GalleryView 8 / Lightbox 缩放 2)+ tools 63 项(新增 tags-config 17)。
 
 - 2026-09-15 全量重构为 Vue 3 + Vite + TypeScript:原 `js/`(8 文件)+ `css/`(2 文件)+ 本地 `manager/`(3 文件)合并为 `src/`(shared/site/manager 三层,约 20 文件)。多入口构建(index/gallery/404 → `dist/` 部署;manager → `dist-manager/` 仅本机)。**根治黑框 bug**:`HomeView.vue` 等全部图片 `@load/@error` 完成才克隆行副本 + `.ready` 滚动(旧 `main.js` 在首图加载后就 `finalizeWall`,永久克隆占位卡),保留 30s 强制启动兜底。**修焦点查表键**:按 `Image.url`(原图域)而非 thumb 查 `FOCAL_POINTS`。**修图集 fallback**:移除遗留 legacy galleries 链。数据文件 `src/site/{config,focalPoints,albums}.ts` 保持纯字面量(禁 import/类型注解),`tools` 服务端改用 acorn `sourceType: module` 解析 `export const`;`serve.mjs` 改为服务 `dist-manager/`(缺失自动 `npm run build:manager`),`/api/sync-deploy` 接受 body `{file}` 白名单同步任意数据文件。删除 `tools/build-pages.mjs`,wrangler 构建命令改 `npm run build`。测试:vitest 组件测试(Lightbox/apiClient/utils,根目录)+ node 侧测试(parse-config 等 46 项,tools/)。

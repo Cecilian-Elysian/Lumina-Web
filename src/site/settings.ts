@@ -8,12 +8,22 @@
  *       --card-w   → .card flex-basis(styles.css 已有 var 回退)
  *       data-anim  → 关动画时置 'off'(CSS 暂停 .row-track 动画)
  *
- * 注意:站点固定深色主题,本模块不涉及配色。
+ * 注意:theme 字段驱动深/浅主题(styles.css 的 :root[data-theme] 变量组)。
  * ============================================================ */
 import { ref, watch, watchEffect } from 'vue';
 import { CONFIG } from './config';
 
+export type ThemeName = 'dark' | 'light';
+
+/** 各主题的 <meta name="theme-color"> 值(浏览器地址栏配色) */
+const THEME_COLOR: Record<ThemeName, string> = {
+  dark: '#14161a',
+  light: '#f6f7f9',
+};
+
 export interface SiteSettings {
+  /** 主题(dark 深色 / light 浅色) */
+  theme: ThemeName;
   /** 图片墙行数(1–6) */
   rows: number;
   /** 卡片宽度 px(180–560) */
@@ -40,9 +50,10 @@ function toNum(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-/** 默认值:rows/cardWidth 取 CONFIG(纯字面量),speed/animate 出厂值 */
+/** 默认值:theme 深色,rows/cardWidth 取 CONFIG(纯字面量),speed/animate 出厂值 */
 export function defaultSettings(): SiteSettings {
   return {
+    theme: 'dark',
     rows: clamp(Math.round(toNum(CONFIG.rows, 3)), ROWS_RANGE.min, ROWS_RANGE.max),
     cardWidth: clamp(Math.round(toNum(CONFIG.cardWidth, 300)), WIDTH_RANGE.min, WIDTH_RANGE.max),
     speed: 1,
@@ -62,6 +73,7 @@ export function loadSettings(): SiteSettings {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return def;
   const o = raw as Record<string, unknown>;
   return {
+    theme: o.theme === 'light' ? 'light' : 'dark',
     rows: clamp(Math.round(toNum(o.rows, def.rows)), ROWS_RANGE.min, ROWS_RANGE.max),
     cardWidth: clamp(Math.round(toNum(o.cardWidth, def.cardWidth)), WIDTH_RANGE.min, WIDTH_RANGE.max),
     speed: clamp(toNum(o.speed, def.speed), SPEED_RANGE.min, SPEED_RANGE.max),
@@ -95,6 +107,10 @@ export function resetSettings(): void {
 export function applySettings(s: SiteSettings): void {
   const el = document.documentElement;
   el.style.setProperty('--card-w', s.cardWidth + 'px');
+  el.dataset.theme = s.theme;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', THEME_COLOR[s.theme]);
   if (s.animate) delete el.dataset.anim;
   else el.dataset.anim = 'off';
 }

@@ -91,6 +91,23 @@ onUnmounted(() => {
         />
         <output class="setting-value">{{ settings.animate ? '开' : '关' }}</output>
       </div>
+
+      <div class="setting-row">
+        <span class="setting-label" id="set-theme-label">主题</span>
+        <div class="view-switch" role="group" aria-labelledby="set-theme-label">
+          <button
+            type="button"
+            :class="{ active: settings.theme === 'dark' }"
+            @click="settings.theme = 'dark'"
+          >深色</button>
+          <button
+            type="button"
+            :class="{ active: settings.theme === 'light' }"
+            @click="settings.theme = 'light'"
+          >浅色</button>
+        </div>
+        <output class="setting-value">{{ settings.theme === 'light' ? '浅色' : '深色' }}</output>
+      </div>
     </section>
 
     <section class="settings-preview" aria-label="效果预览">
