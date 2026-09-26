@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import HomeView from './HomeView.vue';
 import GalleryView from './GalleryView.vue';
 import NotFoundView from './NotFoundView.vue';
 import SettingsView from './SettingsView.vue';
 import Lightbox from './Lightbox.vue';
 import { useErrorBanner } from './composables';
+import { useVisit } from './visit';
+import { formatInt } from '@/shared/utils';
 
 /** 入口 HTML 内联脚本注入的视图标识(home / gallery / settings / notfound) */
 const view = window.__VIEW__ || 'home';
@@ -22,6 +24,11 @@ const navItems = [
 ] as const;
 
 const banner = useErrorBanner();
+const visit = useVisit();
+
+onMounted(() => {
+  visit.track();
+});
 </script>
 
 <template>
@@ -46,7 +53,18 @@ const banner = useErrorBanner();
   <component :is="currentView" />
 
   <footer class="site-footer">
-    <p><a href="https://github.com/Cecilian-Elysian/Lumina" target="_blank" rel="noopener">GitHub</a></p>
+    <div class="footer-capsule">
+      <a class="footer-link" href="https://github.com/Cecilian-Elysian/Lumina" target="_blank" rel="noopener">GitHub</a>
+      <template v-if="visit.totals.value">
+        <span class="footer-dot" aria-hidden="true">·</span>
+        <span class="footer-stats">
+          {{ formatInt(visit.totals.value.pv) }} 次照亮 · {{ formatInt(visit.totals.value.uv) }} 位旅人
+          <span class="footer-tip" role="tooltip">
+            今日 {{ formatInt(visit.totals.value.today.pv) }} 次照亮 · {{ formatInt(visit.totals.value.today.uv) }} 位旅人
+          </span>
+        </span>
+      </template>
+    </div>
   </footer>
 
   <Lightbox />

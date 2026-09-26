@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, getByPath, shuffle, debounce, clamp01, fileName } from './utils';
+import { escapeHtml, getByPath, shuffle, debounce, clamp01, fileName, formatInt } from './utils';
 
 describe('escapeHtml', () => {
   it('转义五个危险字符', () => {
@@ -58,5 +58,20 @@ describe('fileName', () => {
   });
   it('decode 失败原样返回', () => {
     expect(fileName('https://a.b/c/%E0%A4%A.jpg')).toBe('%E0%A4%A.jpg');
+  });
+});
+
+describe('formatInt — 千位逗号分隔', () => {
+  it('基本分组', () => {
+    expect(formatInt(0)).toBe('0');
+    expect(formatInt(999)).toBe('999');
+    expect(formatInt(1234)).toBe('1,234');
+    expect(formatInt(1234567)).toBe('1,234,567');
+  });
+  it('小数向下取整,负数/非法回退 0', () => {
+    expect(formatInt(12.9)).toBe('12');
+    expect(formatInt(-5)).toBe('0');
+    expect(formatInt('abc')).toBe('0');
+    expect(formatInt(null)).toBe('0');
   });
 });

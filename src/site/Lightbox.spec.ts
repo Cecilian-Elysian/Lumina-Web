@@ -127,3 +127,120 @@ describe('Lightbox 缩放', () => {
     wrapper.unmount();
   });
 });
+
+/* ---- 触屏手势 ----
+ * jsdom 的 PointerEvent 可用性不稳定,直接派发带坐标属性的
+ * 通用 Event(组件只读 pointerId/pointerType/clientX/clientY) */
+function firePointer(
+  el: Element,
+  type: string,
+  opts: { x: number; y: number; id?: number; pointerType?: string },
+) {
+  const ev = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'pointerId', { value: opts.id ?? 1 });
+  Object.defineProperty(ev, 'pointerType', { value: opts.pointerType ?? 'touch' });
+  Object.defineProperty(ev, 'clientX', { value: opts.x });
+  Object.defineProperty(ev, 'clientY', { value: opts.y });
+  el.dispatchEvent(ev);
+}
+
+describe('Lightbox 触屏手势', () => {
+  const lb = useLightbox();
+
+  beforeEach(() => {
+    lb.close();
+  });
+
+  it('左滑 → 下一张,右滑 → 上一张', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    const stage = wrapper.find('.lb-stage').element;
+
+    firePointer(stage, 'pointerdown', { x: 200, y: 150 });
+    firePointer(stage, 'pointermove', { x: 150, y: 150 });
+    firePointer(stage, 'pointerup', { x: 130, y: 150 });
+    await nextTick();
+    expect(wrapper.find('.lb-img').attributes('src')).toBe('https://a/2.jpg');
+
+    firePointer(stage, 'pointerdown', { x: 100, y: 150 });
+    firePointer(stage, 'pointermove', { x: 150, y: 150 });
+    firePointer(stage, 'pointerup', { x: 180, y: 150 });
+    await nextTick();
+    expect(wrapper.find('.lb-img').attributes('src')).toBe('https://a/1.jpg');
+    wrapper.unmount();
+  });
+
+  it('小位移慢滑不切图', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    const stage = wrapper.find('.lb-stage').element;
+
+    firePointer(stage, 'pointerdown', { x: 200, y: 150 });
+    firePointer(stage, 'pointermove', { x: 190, y: 150 });
+    firePointer(stage, 'pointerup', { x: 185, y: 150 });
+    await nextTick();
+    expect(wrapper.find('.lb-img').attributes('src')).toBe('https://a/1.jpg');
+    wrapper.unmount();
+  });
+
+  it('纵向滑动不切图', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    const stage = wrapper.find('.lb-stage').element;
+
+    firePointer(stage, 'pointerdown', { x: 150, y: 100 });
+    firePointer(stage, 'pointermove', { x: 150, y: 180 });
+    firePointer(stage, 'pointerup', { x: 150, y: 220 });
+    await nextTick();
+    expect(wrapper.find('.lb-img').attributes('src')).toBe('https://a/1.jpg');
+    wrapper.unmount();
+  });
+
+  it('双指 pinch 拉开 → 放大,双指中心平移跟随', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    const stage = wrapper.find('.lb-stage').element;
+
+    firePointer(stage, 'pointerdown', { id: 1, x: 100, y: 100 });
+    firePointer(stage, 'pointerdown', { id: 2, x: 140, y: 100 }); // 基准距离 40
+    firePointer(stage, 'pointermove', { id: 2, x: 180, y: 100 }); // 距离 80 → 2x
+    expect(lb.scale.value).toBe(2);
+    expect(lb.tx.value).toBe(20); // 双指中点 120 → 140
+    wrapper.unmount();
+  });
+
+  it('放大后单指平移仍可用', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    lb.zoomBy(1); // 2x
+    const stage = wrapper.find('.lb-stage').element;
+
+    firePointer(stage, 'pointerdown', { x: 100, y: 100 });
+    firePointer(stage, 'pointermove', { x: 130, y: 120 });
+    expect(lb.tx.value).toBe(30);
+    expect(lb.ty.value).toBe(20);
+    firePointer(stage, 'pointerup', { x: 130, y: 120 });
+    expect(lb.scale.value).toBe(2); // 平移不改缩放
+    wrapper.unmount();
+  });
+
+  it('双击(两次快点点按)放大 1 → 2.5', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    const stage = wrapper.find('.lb-stage').element;
+
+    firePointer(stage, 'pointerdown', { x: 100, y: 100 });
+    firePointer(stage, 'pointerup', { x: 100, y: 100 });
+    firePointer(stage, 'pointerdown', { x: 102, y: 101 });
+    firePointer(stage, 'pointerup', { x: 102, y: 101 });
+    await nextTick();
+    expect(lb.scale.value).toBe(2.5);
+    wrapper.unmount();
+  });
+});

@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:schema:local": "npx wrangler d1 execute lumina-db --local --file schema.sql",
+    "db:schema:remote": "npx wrangler d1 execute lumina-db --remote --file schema.sql"
   },
   "dependencies": {
     "vue": "^3.5.13"

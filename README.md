@@ -8,181 +8,69 @@ Vue 3 + Vite + TypeScript 静态站点：多行叠层流动图片墙 + 图集浏
 ```bash
 npm install
 
-# 方式一（推荐，带 /api/images 代理，可看真实图床数据）：
+# 方式一（推荐，带代理看真实图床数据）：
 npm run build
 npx wrangler pages dev dist --port 8001
-# 打开 http://127.0.0.1:8001
 
 # 方式二（Vite 开发服务器，无代理 → 回退兜底图）：
 npm run dev
-# 打开 http://127.0.0.1:5173
-
-# 方式三（纯静态服务器，无代理 → 回退兜底图）：
-python -m http.server 8000
 ```
 
->代理模式需在 .dev.vars 写入 QUBU_TOKEN=你的token
+> 代理模式需在 .dev.vars 写入 QUBU_TOKEN=你的token
 
-## 页面（Vite 多入口）
+## 页面
 
-- index.html — 主页（流动图片墙 + 灯箱）
-- gallery.html — 图集页（相册网格 + 灯箱）
-- 404.html — Cloudflare 未知路径 404 页面
-- manager.html — 本地 Manager 编辑器（构建到 dist-manager/，不部署）
+- index.html — 主页（流动图片墙）
+- gallery.html — 图集页（相册网格 + 瀑布流）
+- settings.html — 访客偏好设置
+- 404.html — Cloudflare 404 页
+- manager.html — 本地 Manager 编辑器（不部署）
 
 ## 部署
 
-### ⚠️ 必须先设 Dashboard（Git 集成生效前必做）
+**Cloudflare Pages（Git 集成）**，Dashboard → Pages → Settings：
 
-`wrangler.toml` 的 `[build] command` 仅供 `wrangler pages dev`/`wrangler pages deploy` CLI 使用；
-**Cloudflare Pages Dashboard 的 Git 集成项目会忽略它**——必须手动在 Dashboard 配置 Build command。
+1. Builds：Build command `npm run build`，输出目录 `dist`（Git 集成会忽略 wrangler.toml 的构建配置，必须手动设）
+2. 环境变量（Production / Preview 都填）：`NODE_VERSION=20`、`TOKEN`（Secret，7bu.top token）
 
-进入 **Cloudflare Dashboard → Workers & Pages → lumina → Settings → Builds**：
+推 main 自动部署。备选：CLI `npx wrangler pages deploy dist`，或仓库自带的 GitHub Actions（配 `CLOUDFLARE_API_TOKEN` 即可）。
 
-| 字段 | 值 |
-|---|---|
-| Framework preset | `None` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Root directory | (留空，仓库根) |
+验证：`curl -I https://illusium.pages.dev/assets/main-*.js` 应 200 且为 JS MIME。
 
-然后在 **Settings → Environment variables** 添加：
+### D1（访客统计 + 图片点赞）
 
-| 变量 | 类型 | Production / Preview 都填 |
-|---|---|---|
-| `NODE_VERSION` | Plaintext | `20` |
-| `TOKEN`（或 `QUBU_TOKEN`） | **Secret** | (你的 7bu.top Bearer token) |
-
-> `TOKEN` 和 `QUBU_TOKEN` 都接受，Dashboard 用了哪个都生效。
-
-> 没设 `NODE_VERSION` 时 CF 默认 Node 12，`npm install` 会失败；构建失败会导致页面空白。
-> 没填 `Build command` 时 CF 不跑构建，直接把仓库根当产物部署——`index.html` 里的 `<script src="/src/site/main.ts">` 会被原样 deploy，浏览器加载 `.ts` 失败（CF 默认 MIME `video/mp2t`）。
-
-### 验证
+未配置时页面静默降级（不显示统计/点赞，不报错）：
 
 ```bash
-# 部署后 Network 面板检查:
-curl -I https://illusium.pages.dev/assets/main-*.js
-# 应返回 200 + Content-Type: application/javascript
-curl -s https://illusium.pages.dev/ | grep -i 'script'
-# 应输出 <script type="module" crossorigin src="/assets/main-*.js">
-# 而不是 /src/site/main.ts
+npx wrangler d1 create lumina-db   # 把输出的 id 填入 wrangler.toml
+npm run db:schema:remote           # 建表（本地开发用 db:schema:local）
 ```
 
-### 备选：CLI 手动部署（绕开 Dashboard Git 集成）
+查明细：`npx wrangler d1 execute lumina-db --remote --command "SELECT * FROM daily_stats"`
 
-```bash
-npm install
-npm run build
-npx wrangler pages deploy dist --project-name=lumina --branch=main
-```
+## 注意事项
 
-需要环境变量 `CLOUDFLARE_API_TOKEN`（在 CF Dashboard → My Profile → API Tokens 创建）。
+- 图床代理会并发拉全部分页，图床图片建议控制在 400 张以内
+- Manager「配置」Tab 保存会整体重写 config.ts，手工注释会丢失；mode/token 不可改
+- 统计/点赞接口无鉴权，个人站可接受；UV 按 `sha256(IP+UA+日)` 按日轮转，不存原始 IP
+- AI 焦点分析是 merge 不是覆盖，不会清掉手工标注的焦点
 
-### 备选：GitHub Actions 部署（仓库自带 `.github/workflows/deploy.yml`）
+## 本地 Manager
 
-如果不想在 CF Dashboard 设 Build command，可以走 Actions：
-1. Dashboard → Settings → Builds → Build command 设为空（或禁用 Git 集成）
-2. GitHub repo → Settings → Secrets 添加 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`
-3. 每次 push main Actions 自动 build + deploy
-
-## 运维风险提示
-
-- **图床分页合并是"不设上限"的**:7bu.top 单页最多 40 张,代理会**并发拉所有分页**。如果图床总图片数很多(> 400 张),单次 `/api/images` 请求会瞬时发起十几个并发请求打到图床。建议把图床图片数量控制在 **400 张以内**(约 10 个分页以内);代理层在 `last_page > 10` 时会在 Cloudflare 控制台打警告日志,可作为运维信号。
-- **AI 批量焦点分析是 merge 而非覆盖**:重跑 `node ai/build-focal-points.mjs` 不会再清掉手工标注的焦点(详见 `tools/server/lib/config-reader.mjs` 的 `mergeFocalPoints`)。
-- **Manager「配置」Tab 保存会重写 `config.ts`**:只允许白名单字段(rows/cardWidth/perPage/thumbWidth/lazyRootMargin),mode/token/字段映射**保留原值不可改**;但文件会被生成头 + JSON 字面量整体重写,手工注释会丢失。
-
-
----
-
-## 操作指南
-
->正在编写......
-
-### Windows 用户
-
-- **首次启动**:双击 `tools/dev.bat` —— 一站式完成"装依赖 → 启动服务 → 等待端口 → 打开 Chrome/Edge(DevTools 自动开)"
-- **服务已启,新开标签**:双击 `tools/console.bat`
-- **看原始日志**:双击 `tools/start.bat`(前台运行)
-
-服务只监听 `127.0.0.1:8002`,关闭启动窗口或 `Ctrl+C` 即可停服。详见 `tools/README.md`。
-
-### macOS / Linux 用户
-
-```bash
-./tools/start.sh
-```
+- Windows：双击 `tools/dev.bat`（一键装依赖 + 启动 + 开浏览器）；`tools/console.bat` 新开标签
+- macOS / Linux：`./tools/start.sh`
+- 监听 `127.0.0.1:8002`，详见 `tools/README.md`
 
 ## 文件结构
 
 ```
-Lumina-Web/
-|
-├── index.html                       # 主页 Vite 入口(window.__VIEW__ = 'home')
-├── gallery.html                     # 图集页 Vite 入口('gallery')
-├── settings.html                    # 设置页 Vite 入口('settings',访客偏好)
-├── 404.html                         # 404 页 Vite 入口('notfound')
-├── manager.html                     # Manager Vite 入口(仅本机构建,不部署)
-|
-├── src/
-│   ├── shared/                      # 前后端共享:类型 / 工具 / API 客户端
-│   │   ├── types.ts                 # Image / FocalPoint / AlbumMeta / AlbumsDoc / TagsDoc 契约
-│   │   ├── utils.ts                 # 纯函数(focalStyle / fileName / srcSet...)
-│   │   └── apiClient.ts             # 图片列表获取 + mapImage 字段映射
-│   │
-│   ├── site/                        # Viewer(部署到 Cloudflare)
-│   │   ├── config.ts                # 配置(纯字面量,tools 服务端 acorn 解析)
-│   │   ├── focalPoints.ts           # 焦点数据(由 tools/ 产出,纯字面量)
-│   │   ├── albums.ts                # 图集元数据 + url 映射(纯字面量)
-│   │   ├── tags.ts                  # 图片标签 url→tags(纯字面量)
-│   │   ├── settings.ts              # 访客偏好单例(localStorage → CSS 变量,含深/浅主题)
-│   │   ├── composables.ts           # useFocal / useAlbums / useTags / useLightbox / useErrorBanner
-│   │   ├── main.ts                  # Viewer 入口(initSettings → mount)
-│   │   ├── App.vue                  # 按 window.__VIEW__ 切换视图
-│   │   ├── HomeView.vue             # 流动墙(响应式行数/速度,等全部图加载完成才滚动)
-│   │   ├── GalleryView.vue          # 图集网格 + 标签搜索 + 「全部」瀑布流双视图
-│   │   ├── SettingsView.vue         # 设置页(行数/宽度/速度/动画,实时预览)
-│   │   ├── NotFoundView.vue         # 404
-│   │   ├── Lightbox.vue             # 灯箱(缩放/平移/下载/标签/键盘/预加载)
-│   │   └── styles.css               # 全部样式(含主题变量、动画、响应式)
-│   │
-│   └── manager/                     # Manager(本地编辑器)
-│       ├── main.ts                  # Manager 入口
-│       ├── api.ts                   # 编辑器 API 层(配置/图片/焦点/图集/标签/同步/AI)
-│       ├── App.vue                  # Tab 切换(焦点 / 图集 / 标签 / 配置)
-│       ├── FocalTab.vue             # 焦点列表 + AI 批量分析(SSE)
-│       ├── FocalEditor.vue          # 单图焦点可视化编辑 + 拖拽微调
-│       ├── AlbumTab.vue             # 图集 chips + 图片网格 + 拖拽归类
-│       ├── AlbumChip.vue            # 单个图集 chip(拖放目标)
-│       ├── AlbumModal.vue           # 新建 / 重命名图集
-│       ├── TagTab.vue               # 图片打标签(chips 编辑 + 候选 datalist)
-│       ├── ConfigTab.vue            # 站点配置表单(白名单字段)
-│       └── styles.css               # Manager 样式
-|
-├── functions/api/images.js          # Pages Function 代理(服务端注入 token)
-|
-├── tools/                           # 可跟踪的本地服务、AI 与构建工具
-│   ├── start.bat / start.sh         # 一键启动(Win / Unix)
-│   ├── package.json                 # Node 依赖 + npm scripts
-│   ├── README.md                    # tools/ 使用说明
-│   │
-│   ├── server/                      # 启动器 + HTTP 服务器
-│   │   ├── serve.mjs                # 入口(自检 + 装依赖 + 自动构建 manager + 开浏览器)
-│   │   └── lib/
-│   │       └── config-reader.mjs    # 共享:acorn 安全解析 + tags/config 白名单读写
-│   │
-│   ├── test/                        # node 侧测试(独立 vitest 配置)
-│   └── ai/                          # AI 工具(命令行)
-│       ├── build-focal-points.mjs   # 人脸检测 + 批量分析(含 --download-only)
-│       └── analyze-images.mjs       # 列出 viewer 当前所有图片 URL
-│
-├── dist/                            # Viewer 构建产物(Git 忽略,部署)
-├── dist-manager/                    # Manager 构建产物(Git 忽略,仅本机)
-├── vite.config.ts                   # 多入口构建(mode=manager → dist-manager)
-├── wrangler.toml                    # Cloudflare Pages 构建配置
-└── .dev.vars                        # 本地开发密钥(git 忽略,不入库)
+src/shared      前后端共享：types / utils / apiClient
+src/site        Viewer 站点：视图组件 + likes/visit/settings/wallTouch 单例模块 + 样式
+src/manager     本地 Manager 编辑器（焦点 / 图集 / 标签 / 配置 四个 Tab）
+functions/api   Pages Functions：images 图床代理 / visit 访客统计 / likes 点赞
+tools/          本地启动器 + AI 工具 + node 侧测试
+schema.sql      D1 表结构（daily_stats / visitors / likes）
 ```
-
 
 ---
 
@@ -197,10 +85,14 @@ Lumina-Web/
 - [x] 深色/浅色主题切换(设置页深/浅两档,防闪烁,CSS 变量组)
 - [x] SEO 基建(OG 分享卡片/canonical/sitemap/robots,404 noindex)
 - [x] 展示增强(灯箱缩放/平移/下载、「全部」瀑布流视图)
+- [x] 触屏手动(流动墙拖拽/双击暂停/惯性,灯箱滑动切图/pinch 缩放/双击放大)
+- [x] 图片点赞(灯箱 ♥ + 瀑布流角标,本地去重 + D1 原子计数,失败回滚)
+- [x] 访客统计(页脚胶囊 PV/UV + 悬浮今日数据,D1 按日聚合,爬虫跳过)
 - [ ] 设置搭建(站长端深水区:数据源切换 UI)
 
 ## 日志记录
 
+- 2026-09-26 (v4) 触屏手动 + 图片点赞 + 访客统计。**触屏手动**:`wallTouch.ts` 纯函数(位移按轨道宽 50% 周期归一化/末段速度估算/点按判定/惯性衰减);`HomeView` 行内加 `.row-drag` 承接手动位移与 CSS 动画叠加,touch 指针按下暂停该行、横向拖动拨墙(带惯性)、双击持久暂停/继续、单击仍开灯箱(触屏延迟 280ms 给双击让路,拖拽后抑制合成 click);`:hover` 暂停限定 `@media (hover: hover)` 根治触屏粘滞,`.row` 加 `touch-action: pan-y` 保纵向滚动。**灯箱手势**:统一指针模型——1 指 scale=1 滑动切图(60px 阈值/快速轻扫,跟手弹回)、1 指 scale>1 平移、双指 pinch 缩放(1–4 倍,双指中心跟随)、手动双击检测(iOS 不合成 dblclick,且抑制原生重复触发)。**图片点赞**:D1 `likes` 表(url=原图直链,`MAX(0,…)` 防负数);`functions/api/likes.js` GET 全量/POST 原子增减;`site/likes.ts` 单例(localStorage `lumina.liked` 本地去重 + 乐观更新 + 失败回滚弹 banner + pending 防连点),UI 为灯箱 ♥ 胶囊按钮与瀑布流角标(未就绪不渲染)。**访客统计**:D1 `daily_stats`(按日 PV/UV)+ `visitors` 指纹表(按日轮转,不存原始 IP);`functions/api/visit.js` POST 记访问同响应返回累计(省一次 GET,爬虫 UA 跳过);`site/visit.ts` 单例;页脚改为**玻璃胶囊**(GitHub + 「N 次照亮 · M 位旅人」),悬浮显示今日数据。**基建**:`schema.sql` + wrangler.toml D1 绑定 + `db:schema:local/remote` 脚本;Function 有单测(`tools/test/pages-functions.test.mjs`,mock D1,无需 wrangler)。测试:根目录 77 项 + tools 72 项全过。
 - 2026-09-25 (v3) 浅色主题观感微调。styles.css 再收敛 5 个阴影变量(`--nav-shadow/--title-shadow/--nav-link-shadow/--hover-shadow/--hover-shadow-sm`)替换 7 处硬编码黑色投影,浅色组下柔化为暗蓝灰低透明或 none(标题/导航 text-shadow 去除,hover 阴影降密);深色取值与原值一致像素级不变,灯箱恒暗部分与 toggle 旋钮投影不动。
 - 2026-09-25 (v2) SEO 基建。index/gallery/settings 三页 `<head>` 加 `og:type/site_name/title/description/url/image/image:alt` + `twitter:card`(设置页 summary,其余 summary_large_image) + `canonical`(域名 illusium.pages.dev);og:image 用图床直链(`bu.dusays.com/.../6a8da73da2991.jpg`,可随时换一行)。404.html 加 `robots: noindex`(不加 OG)。新建 `public/sitemap.xml`(3 URL)与 `public/robots.txt`(Allow all + Sitemap 行),Vite 默认拷贝 public/ → dist/。
 - 2026-09-25 深色/浅色主题切换。`settings.ts` 加 `theme: 'dark'|'light'` 字段(默认 dark,loadSettings 严格白名单校验,非法值回退),`applySettings` 写 `html.dataset.theme` + 动态更新 `<meta name="theme-color">`(#14161a ↔ #f6f7f9)。`styles.css` 变量化改造:约 20 处硬编码深色收敛为 `--nav-bg/--nav-link/--glass-bg/--chip-bg/--chip-bg-hover/--glass-border/--glass-border-strong/--img-bg` 8 个变量,新增 `:root[data-theme='light']` 浅色覆盖组(玻璃面改暗透明,`#f6f7f9→#eceef3` 渐变底);灯箱遮罩/按钮/tag 保持恒暗(看图惯例),toggle 旋钮加投影保两态可辨。`SettingsView` 加「主题」行(view-switch 深浅分段按钮,settings 单例直写全站响应)。4 个入口 HTML(index/gallery/settings/404)`<head>` 加防闪烁内联脚本:解析期读 localStorage 提前置 `data-theme`,浅色用户刷新无白闪。测试:settings.test.ts 13 项(+4:light/dark meta 同步、非法回退、LS 预置读出),全量 50 项通过。

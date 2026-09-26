@@ -54,3 +54,9 @@ export function fileName(url: string): string {
     return seg;
   }
 }
+
+/** 千位逗号分隔(页脚统计/点赞数展示用;非法值返回 '0') */
+export function formatInt(v: unknown): string {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n.toLocaleString('en-US') : '0';
+}

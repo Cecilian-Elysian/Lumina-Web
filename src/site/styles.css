@@ -174,15 +174,69 @@ body {
   color: var(--text-sub);
 }
 
-.site-footer a {
+/* 页脚胶囊:GitHub 链接 + 访客统计(未启用 D1 时自动只剩链接) */
+.footer-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 22px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.site-footer a.footer-link {
   color: var(--text-sub);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
-.site-footer a:hover {
+.site-footer a.footer-link:hover {
   color: var(--text-main);
   text-decoration: underline;
+}
+
+.footer-dot {
+  color: var(--text-sub);
+  opacity: 0.55;
+}
+
+.footer-stats {
+  position: relative;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  cursor: default;
+}
+
+/* 悬浮提示:今日数据(纯 CSS,悬停/键盘聚焦显示) */
+.footer-tip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  white-space: nowrap;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--nav-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--nav-shadow);
+  color: var(--text-sub);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.footer-stats:hover .footer-tip,
+.footer-stats:focus-within .footer-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .error-banner {
@@ -238,6 +292,13 @@ body {
 .row {
   overflow: hidden;
   padding: var(--row-margin) 0;
+  /* 纵向滚动手势仍归浏览器,横向手势交给行拖拽(pointer events) */
+  touch-action: pan-y;
+}
+
+/* 手动位移层:触屏拖动/惯性叠加在 CSS 动画之上(两层 transform 互不干扰) */
+.row-drag {
+  will-change: transform;
 }
 
 .row-track {
@@ -257,7 +318,15 @@ body {
   to   { transform: translateX(-50%); }
 }
 
-.row:hover .row-track { animation-play-state: paused; }
+/* 触屏:按住中(.is-held)/ 双击暂停(.is-paused) */
+.row.is-held .row-track,
+.row.is-paused .row-track { animation-play-state: paused; }
+
+/* 桌面悬停暂停:限定支持 hover 的指针设备,
+   规避触屏 :hover 粘滞(点一下永久暂停)的问题 */
+@media (hover: hover) {
+  .row:hover .row-track { animation-play-state: paused; }
+}
 
 /* ============ 5. 卡片与加载态 ============ */
 .card {
@@ -842,6 +911,7 @@ body {
 }
 
 .masonry-item {
+  position: relative;
   break-inside: avoid;
   margin: 0 0 16px;
   border-radius: var(--card-radius);
@@ -868,6 +938,47 @@ body {
 }
 .masonry-item img.is-loaded { opacity: 1; }
 
+/* 瀑布流点赞角标(桌面悬停浮现;触屏常显,因为没有 hover) */
+.masonry-like {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 11px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(18, 20, 25, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+.masonry-like:hover { transform: translateY(-1px); }
+.masonry-item:hover .masonry-like,
+.masonry-like:focus-visible,
+.masonry-like.liked { opacity: 1; }
+.masonry-like:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+.masonry-like.liked { background: rgba(255, 77, 109, 0.32); }
+.masonry-like.liked .masonry-like-heart { color: #ff8fa8; }
+.masonry-like-heart { font-size: 0.85rem; }
+@media (hover: none) {
+  .masonry-like { opacity: 1; }
+}
+
 /* ============ 15. 灯箱增强 ============ */
 .lb-stage {
   display: flex;
@@ -887,6 +998,26 @@ body {
   font-size: 1.2rem;
   text-decoration: none;
 }
+
+/* 灯箱点赞胶囊(♥ + 计数;未绑定 D1 时整个不渲染) */
+.lb-like {
+  top: 22px;
+  right: 150px;  /* ×(26) ↓(86) ♥(150) */
+  width: auto;
+  min-width: 48px;
+  padding: 0 14px;
+  border-radius: 999px;
+  gap: 5px;
+  font-size: 1.15rem;
+}
+.lb-like-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.lb-like.liked { background: rgba(255, 77, 109, 0.24); }
+.lb-like.liked .lb-like-heart { color: var(--brand-1); }
 
 .lb-tags {
   position: absolute;

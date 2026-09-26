@@ -3,12 +3,15 @@ import { ref, computed, onMounted } from 'vue';
 import { loadImages } from '@/shared/apiClient';
 import type { Image } from '@/shared/types';
 import { useAlbums, useTags, useFocal, useLightbox } from './composables';
+import { useLikes } from './likes';
+import { formatInt } from '@/shared/utils';
 
 /* ============================================================
  * 图集页 — 双视图(图集网格 / 全部图片瀑布流)
  *   - 搜索域:图集名 + 图集内图片标签 + 图片所属图集名
  *   - 图集卡片下展示 top-6 标签 chips(点击 = 填入搜索)
  *   - all 模式瀑布流用 thumb(600w)原图留给灯箱
+ *   - 瀑布流卡片点赞角标(服务端计数就绪才渲染;点击不进灯箱)
  * ============================================================ */
 
 const images = ref<Image[]>([]);
@@ -22,6 +25,12 @@ const albums = useAlbums(() => images.value);
 const { tagsOf, albumTags } = useTags();
 const { focalStyle } = useFocal();
 const lb = useLightbox();
+const { ready: likesReady, likeCount, isLiked, toggleLike } = useLikes();
+
+/** 角标显示条件:已赞 或 计数 > 0(0 赞未赞不占位) */
+function showLike(url: string): boolean {
+  return likesReady.value && (likeCount(url) > 0 || isLiked(url));
+}
 
 /** albums 模式过滤:图集名或图集内任一标签命中 */
 const filtered = computed(() => {
@@ -208,6 +217,19 @@ onMounted(async () => {
           @load="onCoverLoad(img.thumb)"
           @error="onCoverLoad(img.thumb)"
         >
+        <button
+          v-if="showLike(img.url)"
+          class="masonry-like"
+          :class="{ liked: isLiked(img.url) }"
+          type="button"
+          :aria-label="isLiked(img.url) ? '取消点赞' : '点赞'"
+          :aria-pressed="isLiked(img.url) ? 'true' : 'false'"
+          @click.stop="toggleLike(img.url)"
+          @keydown.stop
+        >
+          <span class="masonry-like-heart">{{ isLiked(img.url) ? '♥' : '♡' }}</span>
+          <span v-if="likeCount(img.url) > 0" class="masonry-like-count">{{ formatInt(likeCount(img.url)) }}</span>
+        </button>
       </figure>
     </div>
 
