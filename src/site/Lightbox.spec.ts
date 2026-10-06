@@ -128,6 +128,49 @@ describe('Lightbox 缩放', () => {
   });
 });
 
+/* ---- 收藏 ---- */
+describe('Lightbox 收藏', () => {
+  const lb = useLightbox();
+
+  beforeEach(() => {
+    localStorage.clear();
+    lb.close();
+  });
+
+  it('点击 ⭐ 收藏,再点取消,LS 同步', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+
+    const btn = wrapper.find('.lb-fav');
+    expect(btn.text()).toBe('☆');
+    await btn.trigger('click');
+    expect(btn.text()).toBe('★');
+    expect(JSON.parse(localStorage.getItem('lumina.favs') || '[]')).toEqual(['https://a/1.jpg']);
+
+    await btn.trigger('click');
+    expect(btn.text()).toBe('☆');
+    expect(localStorage.getItem('lumina.favs')).toBe('[]');
+    wrapper.unmount();
+  });
+
+  it('换图后 ⭐ 状态跟随当前图', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    await wrapper.find('.lb-fav').trigger('click');
+
+    lb.next();
+    await nextTick();
+    expect(wrapper.find('.lb-fav').text()).toBe('☆');
+
+    lb.prev();
+    await nextTick();
+    expect(wrapper.find('.lb-fav').text()).toBe('★');
+    wrapper.unmount();
+  });
+});
+
 /* ---- 触屏手势 ----
  * jsdom 的 PointerEvent 可用性不稳定,直接派发带坐标属性的
  * 通用 Event(组件只读 pointerId/pointerType/clientX/clientY) */

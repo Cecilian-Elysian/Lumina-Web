@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { nextTick } from 'vue';
 import {
-  defaultSettings, loadSettings, saveSettings, applySettings,
+  defaultSettings, defaultSaver, loadSettings, saveSettings, applySettings,
   resetSettings, useSettings,
   ROWS_RANGE, WIDTH_RANGE, SPEED_RANGE,
 } from './settings';
@@ -55,6 +55,7 @@ describe('loadSettings 校验', () => {
       speed: SPEED_RANGE.max,
       animate: true, // 非法类型回默认
       theme: 'dark', // 非法主题回默认
+      screensaver: defaultSaver(),
     });
   });
 
@@ -71,7 +72,11 @@ describe('loadSettings 校验', () => {
 
 describe('持久化往返', () => {
   it('save → load 一致', () => {
-    const s: SiteSettings = { theme: 'light', rows: 2, cardWidth: 420, speed: 1.5, animate: false };
+    const s: SiteSettings = {
+      ...defaultSettings(),
+      theme: 'light', rows: 2, cardWidth: 420, speed: 1.5, animate: false,
+      screensaver: { idleMin: 5, intervalSec: 40, order: 'seq', kenBurns: false },
+    };
     saveSettings(s);
     expect(loadSettings()).toEqual(s);
   });
@@ -79,13 +84,13 @@ describe('持久化往返', () => {
 
 describe('applySettings 应用到 <html>', () => {
   it('写入 --card-w 与 data-anim', () => {
-    applySettings({ theme: 'dark', rows: 3, cardWidth: 360, speed: 1, animate: false });
+    applySettings({ ...defaultSettings(), rows: 3, cardWidth: 360, animate: false });
     expect(
       document.documentElement.style.getPropertyValue('--card-w'),
     ).toBe('360px');
     expect(document.documentElement.dataset.anim).toBe('off');
 
-    applySettings({ theme: 'dark', rows: 3, cardWidth: 360, speed: 1, animate: true });
+    applySettings({ ...defaultSettings(), rows: 3, cardWidth: 360, animate: true });
     expect(document.documentElement.dataset.anim).toBeUndefined();
   });
 });
@@ -104,14 +109,14 @@ describe('theme 主题', () => {
 
   it('light 应用 dataset.theme 与 meta theme-color', () => {
     const meta = ensureThemeColorMeta();
-    applySettings({ theme: 'light', rows: 3, cardWidth: 300, speed: 1, animate: true });
+    applySettings({ ...defaultSettings(), theme: 'light' });
     expect(document.documentElement.dataset.theme).toBe('light');
     expect(meta.getAttribute('content')).toBe('#f6f7f9');
   });
 
   it('dark 应用 dataset.theme 与 meta theme-color', () => {
     const meta = ensureThemeColorMeta();
-    applySettings({ theme: 'dark', rows: 3, cardWidth: 300, speed: 1, animate: true });
+    applySettings({ ...defaultSettings(), theme: 'dark' });
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(meta.getAttribute('content')).toBe('#14161a');
   });
@@ -130,7 +135,10 @@ describe('theme 主题', () => {
 describe('useSettings 单例', () => {
   it('修改后持久化,resetSettings 恢复默认并持久化', async () => {
     const { settings } = useSettings();
-    settings.value = { theme: 'light', rows: 6, cardWidth: 560, speed: 3, animate: false };
+    settings.value = {
+      ...defaultSettings(),
+      theme: 'light', rows: 6, cardWidth: 560, speed: 3, animate: false,
+    };
     await nextTick(); // watch 异步 flush 后才写 LS
     expect(loadSettings().rows).toBe(6);
 
@@ -138,5 +146,48 @@ describe('useSettings 单例', () => {
     await nextTick();
     expect(settings.value).toEqual(defaultSettings());
     expect(loadSettings()).toEqual(defaultSettings());
+  });
+});
+
+describe('screensaver 屏保子设置', () => {
+  it('默认:idleMin=0(关)/ 10 秒 / 随机 / Ken Burns 开', () => {
+    expect(defaultSaver()).toEqual({
+      idleMin: 0, intervalSec: 10, order: 'random', kenBurns: true,
+    });
+    expect(loadSettings().screensaver).toEqual(defaultSaver());
+  });
+
+  it('越界 clamp + 非法类型回默认', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      screensaver: { idleMin: 99, intervalSec: 1, order: 'shuffle', kenBurns: 'yes' },
+    }));
+    expect(loadSettings().screensaver).toEqual({
+      idleMin: 30, intervalSec: 3, order: 'random', kenBurns: true,
+    });
+  });
+
+  it('负数 idleMin / 超大间隔 clamp 到范围', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      screensaver: { idleMin: -5, intervalSec: 999 },
+    }));
+    const s = loadSettings().screensaver;
+    expect(s.idleMin).toBe(0);
+    expect(s.intervalSec).toBe(120);
+    expect(s.order).toBe('random'); // 缺失字段补默认
+    expect(s.kenBurns).toBe(true);
+  });
+
+  it('screensaver 非对象 → 整体回默认', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ screensaver: 'fast' }));
+    expect(loadSettings().screensaver).toEqual(defaultSaver());
+  });
+
+  it('部分合法字段保留,缺失补默认', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      screensaver: { idleMin: 3, order: 'seq' },
+    }));
+    expect(loadSettings().screensaver).toEqual({
+      idleMin: 3, intervalSec: 10, order: 'seq', kenBurns: true,
+    });
   });
 });

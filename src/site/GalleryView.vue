@@ -4,6 +4,7 @@ import { loadImages } from '@/shared/apiClient';
 import type { Image } from '@/shared/types';
 import { useAlbums, useTags, useFocal, useLightbox } from './composables';
 import { useLikes } from './likes';
+import { useFavorites } from './favorites';
 import { formatInt } from '@/shared/utils';
 
 /* ============================================================
@@ -12,6 +13,7 @@ import { formatInt } from '@/shared/utils';
  *   - 图集卡片下展示 top-6 标签 chips(点击 = 填入搜索)
  *   - all 模式瀑布流用 thumb(600w)原图留给灯箱
  *   - 瀑布流卡片点赞角标(服务端计数就绪才渲染;点击不进灯箱)
+ *   - 瀑布流卡片收藏角标(纯本地;未收藏悬停浮现,触屏常显)
  * ============================================================ */
 
 const images = ref<Image[]>([]);
@@ -26,6 +28,7 @@ const { tagsOf, albumTags } = useTags();
 const { focalStyle } = useFocal();
 const lb = useLightbox();
 const { ready: likesReady, likeCount, isLiked, toggleLike } = useLikes();
+const { isFav, toggleFav } = useFavorites();
 
 /** 角标显示条件:已赞 或 计数 > 0(0 赞未赞不占位) */
 function showLike(url: string): boolean {
@@ -217,6 +220,18 @@ onMounted(async () => {
           @load="onCoverLoad(img.thumb)"
           @error="onCoverLoad(img.thumb)"
         >
+        <button
+          class="masonry-fav"
+          :class="{ faved: isFav(img.url) }"
+          type="button"
+          :aria-label="isFav(img.url) ? '取消收藏' : '收藏'"
+          :aria-pressed="isFav(img.url) ? 'true' : 'false'"
+          :title="isFav(img.url) ? '取消收藏' : '收藏'"
+          @click.stop="toggleFav(img.url)"
+          @keydown.stop
+        >
+          <span class="masonry-fav-star">{{ isFav(img.url) ? '★' : '☆' }}</span>
+        </button>
         <button
           v-if="showLike(img.url)"
           class="masonry-like"

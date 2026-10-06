@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue';
 import { useLightbox, useTags, LIGHTBOX_ZOOM } from './composables';
 import { useLikes } from './likes';
+import { useFavorites } from './favorites';
 import { formatInt } from '@/shared/utils';
 
 const {
@@ -10,6 +11,7 @@ const {
 } = useLightbox();
 const { tagsOf } = useTags();
 const { ready: likesReady, likeCount, isLiked, toggleLike } = useLikes();
+const { isFav, toggleFav } = useFavorites();
 
 /* 大图换图淡入:src 变化时先透明,load 后显示 */
 const imgLoaded = ref(false);
@@ -28,6 +30,17 @@ const currentLikes = computed(() => {
 function onLike() {
   const url = current.value?.url;
   if (url) toggleLike(url);
+}
+
+/* ---- 收藏(纯本地,恒可用) ---- */
+const currentFaved = computed(() => {
+  const url = current.value?.url;
+  return url ? isFav(url) : false;
+});
+
+function onFav() {
+  const url = current.value?.url;
+  if (url) toggleFav(url);
 }
 
 /* ---- 滚轮缩放 / 双击缩放 / 拖拽平移 / 触屏滑动与 pinch ----
@@ -238,6 +251,9 @@ watch(isOpen, (open) => {
       aria-label="下载原图"
       title="下载原图"
     >↓</a>
+    <button class="lb-btn lb-fav" :class="{ faved: currentFaved }" type="button" :aria-label="currentFaved ? '取消收藏' : '收藏'" :title="currentFaved ? '取消收藏' : '收藏'" @click="onFav">
+      <span class="lb-fav-star">{{ currentFaved ? '★' : '☆' }}</span>
+    </button>
     <button
       v-if="likesReady"
       class="lb-btn lb-like"

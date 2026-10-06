@@ -9,11 +9,26 @@
  *       data-anim  → 关动画时置 'off'(CSS 暂停 .row-track 动画)
  *
  * 注意:theme 字段驱动深/浅主题(styles.css 的 :root[data-theme] 变量组)。
+ *       screensaver 子对象由 screensaver.ts / ScreensaverOverlay.vue 消费,
+ *       纯组件驱动,不写 <html> 属性。
  * ============================================================ */
 import { ref, watch, watchEffect } from 'vue';
 import { CONFIG } from './config';
 
 export type ThemeName = 'dark' | 'light';
+export type ScreensaverOrder = 'random' | 'seq';
+
+/** 屏保子设置(闲置自动进入 / 换图间隔 / 顺序 / Ken Burns 动效) */
+export interface ScreenSaverPrefs {
+  /** 闲置自动进入的分钟数(0 = 关闭,默认) */
+  idleMin: number;
+  /** 换图间隔秒 */
+  intervalSec: number;
+  /** 播放顺序(random 洗牌 / seq 顺序循环) */
+  order: ScreensaverOrder;
+  /** Ken Burns 缓慢缩放动效 */
+  kenBurns: boolean;
+}
 
 /** 各主题的 <meta name="theme-color"> 值(浏览器地址栏配色) */
 const THEME_COLOR: Record<ThemeName, string> = {
@@ -32,6 +47,8 @@ export interface SiteSettings {
   speed: number;
   /** 滚动动画开关 */
   animate: boolean;
+  /** 屏保模式子设置 */
+  screensaver: ScreenSaverPrefs;
 }
 
 const LS_KEY = 'lumina.settings';
@@ -39,6 +56,12 @@ const LS_KEY = 'lumina.settings';
 export const ROWS_RANGE = { min: 1, max: 6 } as const;
 export const WIDTH_RANGE = { min: 180, max: 560 } as const;
 export const SPEED_RANGE = { min: 0.25, max: 3 } as const;
+export const SAVER_IDLE_RANGE = { min: 0, max: 30 } as const;
+export const SAVER_INTERVAL_RANGE = { min: 3, max: 120 } as const;
+
+/** 设置页分段按钮候选值(单位:分钟 / 秒;0 = 闲置自动关闭) */
+export const IDLE_CHOICES = [0, 1, 3, 5, 10] as const;
+export const INTERVAL_CHOICES = [5, 10, 20, 40] as const;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -50,6 +73,11 @@ function toNum(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** 屏保默认值:idleMin 0 = 闲置自动进入关闭 */
+export function defaultSaver(): ScreenSaverPrefs {
+  return { idleMin: 0, intervalSec: 10, order: 'random', kenBurns: true };
+}
+
 /** 默认值:theme 深色,rows/cardWidth 取 CONFIG(纯字面量),speed/animate 出厂值 */
 export function defaultSettings(): SiteSettings {
   return {
@@ -58,6 +86,20 @@ export function defaultSettings(): SiteSettings {
     cardWidth: clamp(Math.round(toNum(CONFIG.cardWidth, 300)), WIDTH_RANGE.min, WIDTH_RANGE.max),
     speed: 1,
     animate: true,
+    screensaver: defaultSaver(),
+  };
+}
+
+/** 读取并校验屏保子对象;非对象整体回默认,合法字段保留 */
+function loadSaver(raw: unknown): ScreenSaverPrefs {
+  const def = defaultSaver();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return def;
+  const o = raw as Record<string, unknown>;
+  return {
+    idleMin: clamp(Math.round(toNum(o.idleMin, def.idleMin)), SAVER_IDLE_RANGE.min, SAVER_IDLE_RANGE.max),
+    intervalSec: clamp(Math.round(toNum(o.intervalSec, def.intervalSec)), SAVER_INTERVAL_RANGE.min, SAVER_INTERVAL_RANGE.max),
+    order: o.order === 'seq' ? 'seq' : 'random',
+    kenBurns: typeof o.kenBurns === 'boolean' ? o.kenBurns : def.kenBurns,
   };
 }
 
@@ -78,6 +120,7 @@ export function loadSettings(): SiteSettings {
     cardWidth: clamp(Math.round(toNum(o.cardWidth, def.cardWidth)), WIDTH_RANGE.min, WIDTH_RANGE.max),
     speed: clamp(toNum(o.speed, def.speed), SPEED_RANGE.min, SPEED_RANGE.max),
     animate: typeof o.animate === 'boolean' ? o.animate : def.animate,
+    screensaver: loadSaver(o.screensaver),
   };
 }
 

@@ -5,8 +5,10 @@ import GalleryView from './GalleryView.vue';
 import NotFoundView from './NotFoundView.vue';
 import SettingsView from './SettingsView.vue';
 import Lightbox from './Lightbox.vue';
+import ScreensaverOverlay from './ScreensaverOverlay.vue';
 import { useErrorBanner } from './composables';
 import { useVisit } from './visit';
+import { initScreensaver } from './screensaver';
 import { formatInt } from '@/shared/utils';
 
 /** 入口 HTML 内联脚本注入的视图标识(home / gallery / settings / notfound) */
@@ -20,6 +22,7 @@ const currentView = computed(() => views[(view as ViewKey) in views ? (view as V
 const navItems = [
   { href: 'index.html', key: 'home', text: '主页' },
   { href: 'gallery.html', key: 'gallery', text: '图集' },
+  { href: 'settings.html#favs', key: 'favs', text: '收藏' },
   { href: 'settings.html', key: 'settings', text: '设置' },
 ] as const;
 
@@ -28,6 +31,7 @@ const visit = useVisit();
 
 onMounted(() => {
   visit.track();
+  initScreensaver();
 });
 </script>
 
@@ -68,4 +72,5 @@ onMounted(() => {
   </footer>
 
   <Lightbox />
+  <ScreensaverOverlay />
 </template>

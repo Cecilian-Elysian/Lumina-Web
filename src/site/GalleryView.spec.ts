@@ -119,4 +119,24 @@ describe('GalleryView 全部模式(masonry)', () => {
     expect(lb.index.value).toBe(1);
     wrapper.unmount();
   });
+
+  it('收藏角标:点击收藏 → faved 态 + LS,再点取消', async () => {
+    const lb = useLightbox();
+    lb.close(); // 前序用例可能遗留灯箱打开态
+    const wrapper = await mountAll();
+    const favs = wrapper.findAll('.masonry-fav');
+    expect(favs).toHaveLength(3);
+
+    await favs[0].trigger('click');
+    expect(favs[0].classes()).toContain('faved');
+    expect(JSON.parse(localStorage.getItem('lumina.favs') || '[]')).toEqual(['https://a/1.jpg']);
+
+    await favs[0].trigger('click');
+    expect(favs[0].classes()).not.toContain('faved');
+    expect(localStorage.getItem('lumina.favs')).toBe('[]');
+
+    // 点击角标不进灯箱(click.stop)
+    expect(lb.isOpen.value).toBe(false);
+    wrapper.unmount();
+  });
 });
