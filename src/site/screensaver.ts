@@ -3,9 +3,10 @@
  * ------------------------------------------------------------
  * 职责:
  *   - active/current 状态 + 图片序列管理与预加载
- *   - initScreensaver():App.vue 挂载时调用一次
+ *   - initScreensaver():App.vue 挂载时调用一次(幂等)
  *       · 闲置自动进入(idleMin > 0 时;pointermove/按下/按键/滚轮/
- *         触摸任一交互重置计时;标签页隐藏时不触发)
+ *         触摸任一交互重置计时,1s 节流;标签页隐藏时不触发,
+ *         回到可见且仍空闲时重新武装)
  *       · URL 直达:?screensaver=1 图片加载完立即进入
  *
  * 序列策略:
@@ -35,6 +36,9 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let starting = false;
 
+/** show 的世代号:hide() 或新一轮 show() 会使在途 show 的 await 结果作废 */
+let showToken = 0;
+
 /* ---- 纯函数(导出供测试) ---- */
 
 /** Fisher-Yates 洗牌(返回新数组,不改原列表) */
@@ -47,13 +51,16 @@ export function shuffled(list: string[]): string[] {
   return out;
 }
 
-/** 纯函数:前进到下一项。seq 循环;random 走完一圈重洗且避免连续重复。 */
+/** 纯函数:前进到下一项。seq 循环;random 走完一圈重洗且避免连续重复。
+ *  注:防重复的邻位交换会让原第 2 项作首项的概率略高于均匀分布,
+ *  屏保场景可接受。空表防御性返回空 url。 */
 export function advancePlaylist(
   list: string[],
   pos: number,
   order: 'random' | 'seq',
 ): { list: string[]; pos: number; url: string } {
   const total = list.length;
+  if (total === 0) return { list, pos, url: '' };
   const nextPos = (pos + 1) % total;
   if (order === 'seq' || nextPos !== 0) {
     return { list, pos: nextPos, url: list[nextPos] };
@@ -83,11 +90,17 @@ function scheduleNext(): void {
 
 function advance(): void {
   if (!state.active.value || playlist.length === 0) return;
+  if (document.hidden) {
+    // 后台标签页:跳过本轮换图(省下载/解码),保持轮询节奏
+    scheduleNext();
+    return;
+  }
   const next = advancePlaylist(playlist, pos, order());
   playlist = next.list;
   pos = next.pos;
   state.current.value = next.url;
-  preload(next.url);
+  // 预加载「下一张」(不是刚显示的这张),交叉淡入才不断档
+  preload(playlist[(pos + 1) % playlist.length]);
   scheduleNext();
 }
 
@@ -100,12 +113,20 @@ function preload(url: string): void {
 
 /* ---- 对外 API ---- */
 
+/** 供灯箱键盘守卫等外部模块只读屏保开关状态 */
+export function isScreensaverActive(): boolean {
+  return state.active.value;
+}
+
 /** 进入屏保(幂等;图片加载失败回退兜底图,loadImages 永不 reject) */
 export async function showScreensaver(): Promise<void> {
   if (state.active.value || starting) return;
   starting = true;
+  const myToken = ++showToken;
   try {
     const { images } = await loadImages();
+    // await 期间被 hide() 或新一轮 show() 赶上 → 本次作废(hide 必胜)
+    if (myToken !== showToken) return;
     if (images.length === 0) return;
     const urls = images.map((it) => it.url);
     playlist = order() === 'random' ? shuffled(urls) : urls;
@@ -121,6 +142,7 @@ export async function showScreensaver(): Promise<void> {
 
 /** 退出屏保并清理序列与计时器 */
 export function hideScreensaver(): void {
+  showToken++; // 作废在途 show
   state.active.value = false;
   state.current.value = '';
   playlist = [];
@@ -147,11 +169,22 @@ const IDLE_EVENTS: Array<keyof WindowEventMap> = [
   'pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart',
 ];
 
+/** 交互重置节流:高频 pointermove 下避免反复 setTimeout 重排;
+ *  注意清除旧计时器不受节流影响(节流只省重新排程),防残留误触发 */
+const RESET_THROTTLE_MS = 1000;
+let lastResetAt = Number.NEGATIVE_INFINITY;
+
+let initialized = false;
+
 function resetIdle(): void {
   if (idleTimer) {
     clearTimeout(idleTimer);
     idleTimer = null;
   }
+  const now = performance.now();
+  if (now - lastResetAt < RESET_THROTTLE_MS) return;
+  lastResetAt = now;
+
   const idleMin = useSettings().settings.value.screensaver.idleMin;
   if (!idleMin || state.active.value || document.hidden) return;
   idleTimer = setTimeout(() => {
@@ -160,13 +193,22 @@ function resetIdle(): void {
   }, idleMin * 60_000);
 }
 
-/** main 挂载后调用一次:绑定闲置监听 + 处理 ?screensaver=1 直达 */
+/** 从后台回到可见:若仍空闲则重新武装闲置计时 */
+function onVisibilityChange(): void {
+  if (!document.hidden && !state.active.value) resetIdle();
+}
+
+/** main 挂载后调用一次:绑定闲置监听 + 处理 ?screensaver=1 直达(幂等) */
 export function initScreensaver(): void {
+  if (initialized) return;
+  initialized = true;
+
   for (const ev of IDLE_EVENTS) {
     window.addEventListener(ev, resetIdle, { passive: true });
   }
+  document.addEventListener('visibilitychange', onVisibilityChange);
   resetIdle();
 
   const params = new URLSearchParams(window.location.search);
-  if (params.has('screensaver')) void showScreensaver();
+  if (params.get('screensaver') === '1') void showScreensaver();
 }

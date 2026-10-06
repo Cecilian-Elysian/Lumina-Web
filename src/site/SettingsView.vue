@@ -7,12 +7,13 @@ import {
 } from './settings';
 import { useFavorites } from './favorites';
 import { useScreensaver } from './screensaver';
-import { useLightbox } from './composables';
-import { loadImages } from '@/shared/apiClient';
+import { useFocal, useLightbox } from './composables';
+import { loadImages, isFallback } from '@/shared/apiClient';
 import type { Image } from '@/shared/types';
 
 const { settings } = useSettings();
 const { favs, clearAll } = useFavorites();
+const { focalStyle } = useFocal();
 const saver = useScreensaver();
 const lb = useLightbox();
 
@@ -46,11 +47,22 @@ function onReset() {
  * (过滤图床已下架的图,LS 记录保留,图片回归后自动恢复) */
 const images = ref<Image[]>([]);
 
+/** 图床不可达回退兜底图时,收藏交集几乎必为空,需区分文案 */
+const usingFallback = computed(() => isFallback(images.value));
+
 const favImages = computed<Image[]>(() => {
   const byUrl = new Map(images.value.map((img) => [img.url, img]));
   return favs.value
     .map((url) => byUrl.get(url))
     .filter((img): img is Image => img !== undefined);
+});
+
+/** 空态文案:真没收藏 vs 有收藏但列表加载失败 */
+const favsEmptyText = computed(() => {
+  if (favs.value.length > 0 && usingFallback.value) {
+    return '图片列表加载失败,暂无法显示收藏';
+  }
+  return '还没有收藏 — 打开图片点亮 ☆,它们会陈列在这里';
 });
 
 function openFav(index: number) {
@@ -76,13 +88,13 @@ function onClearFavs() {
 }
 
 onMounted(async () => {
-  const { images: list } = await loadImages();
-  images.value = list;
-  // 导航「收藏」从其他页跳转过来:Vue 渲染晚于原生锚点滚动,手动补一次
+  // #favs 锚点滚动不依赖图片数据(空态也渲染),先滚再拉列表,免得干等
   if (window.location.hash === '#favs') {
     await nextTick();
     document.getElementById('favs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  const { images: list } = await loadImages();
+  images.value = list;
 });
 
 onUnmounted(() => {
@@ -195,14 +207,13 @@ onUnmounted(() => {
           <img
             :src="img.thumb"
             :alt="img.name || '收藏图片'"
+            :style="focalStyle(img.url)"
             loading="lazy"
             decoding="async"
           >
         </button>
       </div>
-      <p v-else class="favs-empty">
-        还没有收藏 — 打开图片点亮 ☆,它们会陈列在这里
-      </p>
+      <p v-else class="favs-empty">{{ favsEmptyText }}</p>
     </section>
 
     <section class="settings-group" aria-label="屏保模式">

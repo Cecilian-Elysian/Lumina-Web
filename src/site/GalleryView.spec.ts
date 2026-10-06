@@ -31,9 +31,12 @@ vi.mock('./tags', () => ({
 
 import GalleryView from './GalleryView.vue';
 import { useLightbox } from './composables';
+import { useFavorites } from './favorites';
 
+/* 收藏是模块级单例:文件级统一用 API 复位(事后改 LS 不影响已加载的 ref) */
 beforeEach(() => {
   localStorage.clear();
+  useFavorites().clearAll();
 });
 
 async function mountView() {

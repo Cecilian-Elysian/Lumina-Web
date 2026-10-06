@@ -10,7 +10,7 @@
  * - 展示侧由调用方与本次拉到的图片求交集(过滤图床已下架的图;
  *   LS 记录保留,图片回归后自动恢复——与图集同策略)
  * ============================================================ */
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 const LS_FAVS_KEY = 'lumina.favs';
 
@@ -43,14 +43,19 @@ function writeFavs(list: string[]): void {
 /* ---- 模块级单例状态 ---- */
 const favs = ref<string[]>(readFavs());
 
+/** 查询索引:favs 有序数组保展示顺序,Set 供 O(1) 查询
+ *  (瀑布流每卡片多次 isFav,includes O(n) 会随收藏数放大) */
+const favSet = computed(() => new Set(favs.value));
+
 export function useFavorites() {
   /** 是否已收藏 */
   function isFav(url: string): boolean {
-    return favs.value.includes(url);
+    return favSet.value.has(url);
   }
 
   /** 收藏/取消收藏;返回操作后的收藏状态(true=已收藏) */
   function toggleFav(url: string): boolean {
+    if (!url) return false; // 空串等非法键早退(读侧本就过滤)
     const rest = favs.value.filter((u) => u !== url);
     const wasFav = rest.length !== favs.value.length;
     if (!wasFav) rest.unshift(url); // 新收藏插到头部 = 最近在前

@@ -3,6 +3,13 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import Lightbox from './Lightbox.vue';
 import { useLightbox } from './composables';
+import { useFavorites } from './favorites';
+
+/* 收藏是模块级单例:文件级统一用 API 复位(事后改 LS 不影响已加载的 ref) */
+beforeEach(() => {
+  localStorage.clear();
+  useFavorites().clearAll();
+});
 
 const items = [
   { url: 'https://a/1.jpg', name: 'one' },

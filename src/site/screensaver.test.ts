@@ -127,6 +127,67 @@ describe('useScreensaver — 屏保单例', () => {
   });
 });
 
+describe('useScreensaver — 边界与竞态', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  it('图片列表为空 → 不激活', async () => {
+    const [{ showScreensaver, useScreensaver }] = await freshModules();
+    const { loadImages } = await import('@/shared/apiClient');
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: [], error: null });
+
+    await showScreensaver();
+    expect(useScreensaver().active.value).toBe(false);
+    expect(useScreensaver().current.value).toBe('');
+  });
+
+  it('两图列表 seq 循环轮换:不重洗,首尾相接', async () => {
+    const [{ showScreensaver, useScreensaver }, { useSettings, defaultSettings, defaultSaver }] =
+      await freshModules();
+    const { loadImages } = await import('@/shared/apiClient');
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: [imgs[0], imgs[1]], error: null });
+    const { settings } = useSettings();
+    settings.value = {
+      ...defaultSettings(),
+      screensaver: { ...defaultSaver(), order: 'seq', intervalSec: 5 },
+    };
+
+    vi.useFakeTimers();
+    try {
+      const saver = useScreensaver();
+      await showScreensaver();
+      expect(saver.current.value).toBe('https://a/1.jpg');
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(saver.current.value).toBe('https://a/2.jpg');
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(saver.current.value).toBe('https://a/1.jpg');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hide 使在途 show 作废(加载完成前退出 → 不激活)', async () => {
+    const [{ showScreensaver, hideScreensaver, useScreensaver }] = await freshModules();
+    const { loadImages } = await import('@/shared/apiClient');
+    let resolveLoad!: (v: { images: typeof imgs; error: null }) => void;
+    vi.mocked(loadImages).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveLoad = resolve; }),
+    );
+
+    const pending = showScreensaver(); // 挂在图片加载上
+    hideScreensaver();                 // 加载完成前退出
+    resolveLoad({ images: imgs, error: null });
+    await pending;
+
+    expect(useScreensaver().active.value).toBe(false);
+    expect(useScreensaver().current.value).toBe('');
+  });
+});
+
 describe('initScreensaver — 闲置自动进入', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -192,5 +253,62 @@ describe('initScreensaver — 闲置自动进入', () => {
     hideScreensaver();
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(useScreensaver().active.value).toBe(false);
+  });
+
+  it('URL 直达 ?screensaver=1 → 列表加载完自动激活', async () => {
+    history.replaceState(null, '', '/?screensaver=1');
+    try {
+      const [{ initScreensaver, useScreensaver }, { useSettings, defaultSettings, defaultSaver }] =
+        await freshModules();
+      const { settings } = useSettings();
+      settings.value = {
+        ...defaultSettings(),
+        screensaver: { ...defaultSaver(), order: 'seq' }, // 固定顺序,断言首张可预测
+      };
+      initScreensaver();
+      await vi.advanceTimersByTimeAsync(0); // 冲刷 loadImages 微任务
+      expect(useScreensaver().active.value).toBe(true);
+      expect(useScreensaver().current.value).toBe('https://a/1.jpg');
+    } finally {
+      history.replaceState(null, '', '/');
+    }
+  });
+
+  it('URL 直达仅认 screensaver=1(=0 不触发)', async () => {
+    history.replaceState(null, '', '/?screensaver=0');
+    try {
+      const [{ initScreensaver, useScreensaver }] = await freshModules();
+      initScreensaver();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(useScreensaver().active.value).toBe(false);
+    } finally {
+      history.replaceState(null, '', '/');
+    }
+  });
+
+  it('后台标签页隐藏时跳过换图,回前台恢复', async () => {
+    const [{ initScreensaver, showScreensaver, useScreensaver }, { useSettings, defaultSettings, defaultSaver }] =
+      await freshModules();
+    const { settings } = useSettings();
+    settings.value = {
+      ...defaultSettings(),
+      screensaver: { ...defaultSaver(), order: 'seq', intervalSec: 5 },
+    };
+    initScreensaver();
+    await showScreensaver();
+
+    const setHidden = (v: boolean) =>
+      Object.defineProperty(document, 'hidden', { value: v, configurable: true });
+    setHidden(true);
+    try {
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(useScreensaver().current.value).toBe('https://a/1.jpg'); // 隐藏:未换图
+
+      setHidden(false);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(useScreensaver().current.value).toBe('https://a/2.jpg'); // 回前台:恢复
+    } finally {
+      setHidden(false);
+    }
   });
 });

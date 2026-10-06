@@ -251,7 +251,15 @@ watch(isOpen, (open) => {
       aria-label="下载原图"
       title="下载原图"
     >↓</a>
-    <button class="lb-btn lb-fav" :class="{ faved: currentFaved }" type="button" :aria-label="currentFaved ? '取消收藏' : '收藏'" :title="currentFaved ? '取消收藏' : '收藏'" @click="onFav">
+    <button
+      class="lb-btn lb-fav"
+      :class="{ faved: currentFaved }"
+      type="button"
+      :aria-label="currentFaved ? '取消收藏' : '收藏'"
+      :aria-pressed="currentFaved ? 'true' : 'false'"
+      :title="currentFaved ? '取消收藏' : '收藏'"
+      @click="onFav"
+    >
       <span class="lb-fav-star">{{ currentFaved ? '★' : '☆' }}</span>
     </button>
     <button

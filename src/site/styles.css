@@ -981,7 +981,8 @@ body {
   .masonry-like { opacity: 1; }
 }
 
-/* 瀑布流收藏角标:点赞角标上方;未收藏悬停浮现,已收藏常显 */
+/* 瀑布流收藏角标:点赞角标上方;未收藏悬停浮现,已收藏常显。
+ * visibility 门控:桌面未收藏时 opacity:0 的按钮仍可被点到(隐形热区) */
 .masonry-fav {
   position: absolute;
   right: 10px;
@@ -1001,13 +1002,14 @@ body {
   line-height: 1;
   cursor: pointer;
   opacity: 0;
+  visibility: hidden;
   -webkit-tap-highlight-color: transparent;
-  transition: opacity 0.2s ease, background 0.2s ease, transform 0.15s ease;
+  transition: opacity 0.2s ease, visibility 0.2s ease, background 0.2s ease, transform 0.15s ease;
 }
 .masonry-fav:hover { transform: translateY(-1px); }
 .masonry-item:hover .masonry-fav,
 .masonry-fav:focus-visible,
-.masonry-fav.faved { opacity: 1; }
+.masonry-fav.faved { opacity: 1; visibility: visible; }
 .masonry-fav:focus-visible {
   outline: 2px solid var(--brand-deep, #c9184a);
   outline-offset: 2px;
@@ -1016,7 +1018,7 @@ body {
 .masonry-fav.faved .masonry-fav-star { color: #ffc740; }
 .masonry-fav-star { font-size: 0.9rem; }
 @media (hover: none) {
-  .masonry-fav { opacity: 1; }
+  .masonry-fav { opacity: 1; visibility: visible; }
 }
 
 /* ============ 15. 灯箱增强 ============ */
@@ -1091,6 +1093,26 @@ body {
 
 /* ============ 16. 动画开关 ============ */
 html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
+
+/* ============ 17. 响应式补充 ============ */
+@media (max-width: 768px) {
+  .settings-hero { padding: 40px 16px 24px; }
+  .settings-title { font-size: 2.2rem; }
+  .settings-subtitle { font-size: 0.85rem; }
+  .settings-main { padding: 0 16px 40px; gap: 20px; }
+  .settings-group { padding: 4px 16px; }
+  .setting-row { grid-template-columns: 84px 1fr 72px; gap: 10px; }
+
+  .hero-toolbar { flex-wrap: wrap; }
+
+  .masonry { columns: 2 140px; column-gap: 10px; }
+  .masonry-item { margin-bottom: 10px; }
+
+  .lb-tags { bottom: 52px; padding: 0 60px; }
+
+  .favs-head { flex-wrap: wrap; }
+  .favs-thumb { width: 104px; height: 70px; }
+}
 
 /* ============ 18. 收藏 ============ */
 /* 设置页「我的收藏」区块 */
@@ -1174,8 +1196,8 @@ html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* 焦点数据通过灯箱/卡片查表不可得,缩略条统一居中裁剪即可 */
-  object-position: 50% 35%;
+  /* 焦点位置: 模板 :style 注入 --focal-x/y(复用焦点数据,缩略图同样防裁脸) */
+  object-position: var(--focal-x, 50%) var(--focal-y, 25%);
   display: block;
 }
 
@@ -1185,6 +1207,10 @@ html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
   letter-spacing: 0.04em;
   padding: 4px 0 18px;
 }
+
+/* 分段按钮(设置页屏保行的多选项):允许换行,避免窄屏溢出 */
+.view-switch.wrap { flex-wrap: wrap; border-radius: 18px; }
+.view-switch.wrap button { flex: 0 0 auto; }
 
 /* ============ 19. 屏保模式遮罩 ============ */
 .screensaver {
@@ -1211,7 +1237,8 @@ html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
 }
 .ss-layer.on { opacity: 1; }
 
-/* Ken Burns:缓慢放大 1 → 1.08,时长由内联 animationDuration 控制 */
+/* Ken Burns:缓慢放大 1 → 1.08,时长由内联 animationDuration 控制;
+ * 开关由内联 animation-play-state 控制(关闭=冻结当前缩放,不重启) */
 .ss-layer.kenburns { animation: ss-kenburns linear forwards; }
 
 @keyframes ss-kenburns {
@@ -1237,28 +1264,4 @@ html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .ss-layer { transition: none; }
   .ss-layer.kenburns { animation: none; }
-}
-
-/* 分段按钮(设置页屏保行的多选项):允许换行,避免窄屏溢出 */
-.view-switch.wrap { flex-wrap: wrap; border-radius: 18px; }
-.view-switch.wrap button { flex: 0 0 auto; }
-
-/* ============ 17. 响应式补充 ============ */
-@media (max-width: 768px) {
-  .settings-hero { padding: 40px 16px 24px; }
-  .settings-title { font-size: 2.2rem; }
-  .settings-subtitle { font-size: 0.85rem; }
-  .settings-main { padding: 0 16px 40px; gap: 20px; }
-  .settings-group { padding: 4px 16px; }
-  .setting-row { grid-template-columns: 84px 1fr 72px; gap: 10px; }
-
-  .hero-toolbar { flex-wrap: wrap; }
-
-  .masonry { columns: 2 140px; column-gap: 10px; }
-  .masonry-item { margin-bottom: 10px; }
-
-  .lb-tags { bottom: 52px; padding: 0 60px; }
-
-  .favs-head { flex-wrap: wrap; }
-  .favs-thumb { width: 104px; height: 70px; }
 }

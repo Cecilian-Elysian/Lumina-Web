@@ -10,9 +10,18 @@ const imgs: Image[] = [
   { url: 'https://a/3.jpg', thumb: 'https://t/3.jpg', name: 'three', srcset: '' },
 ];
 
-vi.mock('@/shared/apiClient', () => ({
-  loadImages: vi.fn(async () => ({ images: imgs, error: null })),
-}));
+vi.mock('@/shared/apiClient', async () => {
+  const { CONFIG } = await import('@/site/config');
+  return {
+    loadImages: vi.fn(async () => ({ images: imgs, error: null })),
+    /* 与真实实现同逻辑:列表恰好等于 CONFIG.fallbackImages 即视为回退态 */
+    isFallback: (list: Image[]) => {
+      const fb = CONFIG.fallbackImages;
+      return list.length > 0 && list.length <= fb.length &&
+        list.every((it, i) => it.url === fb[i]);
+    },
+  };
+});
 
 import SettingsView from './SettingsView.vue';
 import { useLightbox } from './composables';
@@ -56,6 +65,8 @@ describe('SettingsView 我的收藏', () => {
 
     expect(wrapper.find('.favs-count').text()).toBe('2 张');
     expect(wrapper.findAll('.favs-thumb')).toHaveLength(2);
+    /* 注:焦点定位经 :style 注入 --focal-x/y,jsdom 的 CSSOM 不支持自定义属性,
+     * 无法在 DOM 上断言,绑定正确性由 typecheck + focalStyle 单测保障 */
 
     await wrapper.find('.favs-actions .favs-btn').trigger('click');
     const lb = useLightbox();
@@ -63,6 +74,21 @@ describe('SettingsView 我的收藏', () => {
     expect(lb.items.value).toHaveLength(2);
     expect(lb.items.value[0]).toEqual({ url: 'https://a/3.jpg', name: 'three' });
     lb.close();
+    wrapper.unmount();
+  });
+
+  it('图床失败回退兜底图 → 收藏区提示加载失败而非「还没有收藏」', async () => {
+    useFavorites().toggleFav('https://a/1.jpg'); // 明明有收藏
+    const { loadImages } = await import('@/shared/apiClient');
+    const { CONFIG } = await import('@/site/config');
+    const fbImgs: Image[] = CONFIG.fallbackImages.map((u) => ({
+      url: u, name: '', thumb: u, srcset: u + ' 1x, ' + u + ' 2x',
+    }));
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: fbImgs, error: null });
+
+    const wrapper = await mountView();
+    expect(wrapper.text()).toContain('图片列表加载失败');
+    expect(wrapper.text()).not.toContain('还没有收藏');
     wrapper.unmount();
   });
 
@@ -116,7 +142,7 @@ describe('SettingsView 屏保', () => {
 
   it('闲置分段按钮写回 settings 并持久化', async () => {
     const wrapper = await mountView();
-    const idleGroup = wrapper.findAll('.view-switch.wrap')[0];
+    const idleGroup = wrapper.find('[aria-labelledby="set-saver-idle-label"]');
     const fiveMin = idleGroup.findAll('button').find((b) => b.text() === '5 分')!;
     await fiveMin.trigger('click');
     await nextTick();

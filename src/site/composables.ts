@@ -6,12 +6,13 @@
  *   useTags       图片标签(TAGS + localStorage 覆盖)
  *   useLightbox   灯箱单例(App.vue 挂载组件,各视图调用 open)
  * ============================================================ */
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, getCurrentInstance } from 'vue';
 import type { CSSProperties } from 'vue';
 import type { Image, Album, AlbumMeta, LightboxItem } from '@/shared/types';
 import { FOCAL_POINTS } from './focalPoints';
 import { ALBUMS } from './albums';
 import { TAGS } from './tags';
+import { isScreensaverActive } from './screensaver';
 
 /* ============================================================
  * useFocal — 焦点样式
@@ -222,6 +223,8 @@ function lbPrev() {
 
 function lbOnKey(e: KeyboardEvent) {
   if (!lbState.isOpen.value) return;
+  // 屏保激活时按键只用于退出屏保,不透传灯箱(防 Esc 连关两层/隐形切图)
+  if (isScreensaverActive()) return;
   if (e.key === 'Escape') lbClose();
   else if (e.key === 'ArrowRight') lbNext();
   else if (e.key === 'ArrowLeft') lbPrev();
@@ -290,9 +293,18 @@ export function useErrorBanner() {
   };
 }
 
+/** 供外部只读灯箱开关状态(不注册键盘监听,任意上下文可调) */
+export function lightboxIsOpen(): boolean {
+  return lbState.isOpen.value;
+}
+
 export function useLightbox() {
-  onMounted(() => window.addEventListener('keydown', lbOnKey));
-  onUnmounted(() => window.removeEventListener('keydown', lbOnKey));
+  // 键盘监听只应由挂载的组件注册;测试等无实例上下文调用时跳过,
+  // 消除 "onMounted is called when there is no active component instance" 警告
+  if (getCurrentInstance()) {
+    onMounted(() => window.addEventListener('keydown', lbOnKey));
+    onUnmounted(() => window.removeEventListener('keydown', lbOnKey));
+  }
 
   const current = computed<LightboxItem | null>(() =>
     lbState.items.value[lbState.index.value] ?? null,

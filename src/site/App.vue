@@ -26,6 +26,18 @@ const navItems = [
   { href: 'settings.html', key: 'settings', text: '设置' },
 ] as const;
 
+/** 设置页按 hash 细分高亮:settings.html#favs → 「收藏」亮;否则「设置」亮 */
+const onFavsHash = window.location.hash === '#favs';
+
+function isActive(key: (typeof navItems)[number]['key']): boolean {
+  if (view === 'settings') {
+    if (key === 'favs') return onFavsHash;
+    if (key === 'settings') return !onFavsHash;
+    return false;
+  }
+  return view === key;
+}
+
 const banner = useErrorBanner();
 const visit = useVisit();
 
@@ -44,7 +56,7 @@ onMounted(() => {
         :key="item.key"
         :href="item.href"
         class="navbar-link"
-        :class="{ active: view === item.key }"
+        :class="{ active: isActive(item.key) }"
       >{{ item.text }}</a>
     </nav>
   </header>
