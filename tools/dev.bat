@@ -1,61 +1,58 @@
 @echo off
+REM ============================================================
+REM  Lumina one-shot launcher: start server + wait + open browser
+REM ------------------------------------------------------------
+REM  ASCII ONLY + CRLF required: see rules in start.bat header.
+REM ============================================================
 chcp 65001 >nul 2>&1
 cd /d "%~dp0\.."
 
 setlocal EnableDelayedExpansion
 
-REM ============================================================
-REM  Lumina 一站式启动 (server + browser)
-REM ------------------------------------------------------------
-REM  1. 检查并启动本地 server (8002)
-REM  2. 等待端口就绪
-REM  3. 打开 Chrome / Edge + DevTools
-REM ============================================================
-
-set URL=http://127.0.0.1:8002/manager/
 set PORT=8002
+REM Use the port the server actually bound: serve.mjs falls back to
+REM 8003+ when 8002 is taken and writes the real port to port.txt.
+if exist "%~dp0.tmp\port.txt" set /p PORT=<"%~dp0.tmp\port.txt"
+set URL=http://127.0.0.1:%PORT%/manager/
 
 echo.
 echo ============================================================
-echo   Lumina 一站式启动
+echo   Lumina one-shot launcher
 echo ============================================================
 echo.
 
-REM ── 检查 Node.js ──
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-  echo [X] 未检测到 Node.js,请前往 https://nodejs.org 下载安装
+  echo [X] Node.js not found. Install it from https://nodejs.org
   echo.
   pause
   exit /b 1
 )
 
-REM ── 检查依赖 (tools/node_modules) ──
 if not exist "tools\node_modules" (
-  echo [1/4] 首次运行,安装依赖(约 30-90 秒)
+  echo [1/4] First run, installing deps - about 30-90s
   call npm install --prefix tools --no-audit --no-fund --loglevel=error
   if !errorlevel! neq 0 (
-    echo [X] 依赖安装失败,请检查网络或手动运行: npm install --prefix tools
+    echo [X] Install failed. Run manually: npm install --prefix tools
     echo.
     pause
     exit /b 1
   )
-  echo   - 依赖已就绪
+  echo   - Deps ready
 ) else (
-  echo [1/4] 检测到 tools\node_modules 已就位,跳过依赖安装
+  echo [1/4] tools\node_modules found, skipping install
 )
 
-REM ── 检查服务是否已在跑 ──
 powershell -NoProfile -Command "$c = Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue; if ($c) { exit 0 } else { exit 1 }" >nul 2>&1
 if %errorlevel%==0 goto SERVER_RUNNING
-echo [2/4] 端口 %PORT% 未监听,启动 server
+echo [2/4] Port %PORT% is free, starting server
 start "Lumina Server" /B cmd /c "node tools\server\serve.mjs --no-launch --no-install --port=%PORT%"
-echo   - 等待服务就绪(超时 30 秒)
+echo   - Waiting for the server - timeout 30s
 set WAIT_COUNT=0
 goto WAIT_LOOP
 
 :SERVER_RUNNING
-echo [2/4] 检测到服务已在运行,跳过启动
+echo [2/4] Server already running, skip start
 goto SKIP_WAIT
 
 :WAIT_LOOP
@@ -64,17 +61,17 @@ set /a WAIT_COUNT+=1
 powershell -NoProfile -Command "$c = Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue; if ($c) { exit 0 } else { exit 1 }" >nul 2>&1
 if %errorlevel%==0 goto SERVER_READY
 if %WAIT_COUNT% lss 30 goto WAIT_LOOP
-echo [X] 服务启动超时 (30 秒),请查看 tools\.tmp\serve.err
+echo [X] Server start timed out after 30s
+echo     Check tools\.tmp\serve.log for details
 echo.
 pause
 exit /b 1
 
 :SERVER_READY
-echo   - 服务已就绪
+echo   - Server is ready
 
 :SKIP_WAIT
 
-REM ── 检测浏览器 ──
 set "CHROME_PATH=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
 if not exist "!CHROME_PATH!" set "CHROME_PATH=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
 if not exist "!CHROME_PATH!" set "CHROME_PATH=%LocalAppData%\Google\Chrome\Application\chrome.exe"
@@ -83,20 +80,20 @@ set "EDGE_PATH=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
 if not exist "!EDGE_PATH!" set "EDGE_PATH=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
 echo.
-echo [3/4] 选择浏览器
+echo [3/4] Picking a browser
 
 if exist "!CHROME_PATH!" (
-  echo   - 使用 Chrome
+  echo   - Using Chrome
   goto LAUNCH_CHROME
 )
 
 if exist "!EDGE_PATH!" (
-  echo   - Chrome 未找到,使用 Edge
+  echo   - Chrome not found, using Edge
   goto LAUNCH_EDGE
 )
 
-echo   - 未找到 Chrome / Edge,使用系统默认浏览器
-echo   - 请手动按 F12 打开 DevTools
+echo   - Chrome / Edge not found, using default browser
+echo   - Press F12 to open DevTools
 start "" "!URL!"
 goto DONE
 
@@ -108,14 +105,17 @@ goto DONE
 start "" "!EDGE_PATH!" --auto-open-devtools-for-tabs "!URL!"
 
 :DONE
-echo [4/4] 已打开 !URL!
+echo [4/4] Opened !URL!
 echo.
 echo ============================================================
-echo   提示:
-echo   - 按 F12 切换 DevTools(或浏览器启动时已自动开)
-echo   - 关闭此窗口不影响 server(后台运行)
-echo   - 想停 server:在任务管理器结束 node.exe 或关闭原始 start.bat 窗口
+echo   Notes:
+echo   - Press F12 to toggle DevTools
+echo   - Closing this window does not stop the server
+echo   - To stop it: close the original start.bat window
+echo     or end node.exe in Task Manager
+echo   - Log: tools\.tmp\serve.log
 echo ============================================================
 echo.
 timeout /t 3 /nobreak >nul
+endlocal
 exit /b 0

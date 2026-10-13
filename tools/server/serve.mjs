@@ -82,8 +82,35 @@ const NO_INSTALL = !!cliArgs['no-install'];
 const MAX_PORT_TRIES = 5;
 
 // ── 启动器辅助 ───────────────────────────────────
+// 运行日志同时落盘到 tools/.tmp/serve.log:批处理窗口一关就没了,
+// 留档便于事后排查(写入失败静默忽略,日志不是功能依赖)
+const LOG_DIR = path.join(TOOLS, '.tmp');
+const LOG_FILE = path.join(LOG_DIR, 'serve.log');
+const PORT_FILE = path.join(LOG_DIR, 'port.txt');
+
+async function appendLog(text) {
+  try {
+    await fs.mkdir(LOG_DIR, { recursive: true });
+    await fs.appendFile(LOG_FILE, `${new Date().toISOString()} ${text}\n`, 'utf8');
+  } catch { /* 日志失败不影响启动 */ }
+}
+
 function log(emoji, msg) {
-  console.log(`${emoji} [serve] ${msg}`);
+  const line = `${emoji} [serve] ${msg}`;
+  console.log(line);
+  void appendLog(line);
+}
+
+/** 写端口文件:console.bat / dev.bat 据此打开真实地址(8002 被占时会回退 8003+) */
+async function writePortFile(port) {
+  try {
+    await fs.mkdir(LOG_DIR, { recursive: true });
+    await fs.writeFile(PORT_FILE, String(port), 'utf8');
+  } catch { /* 忽略 */ }
+}
+
+async function removePortFile() {
+  try { await fs.unlink(PORT_FILE); } catch { /* 忽略 */ }
 }
 
 function checkNode() {
@@ -810,6 +837,7 @@ async function bootstrap() {
 
   const port = await findFreePort();
   const url = `http://127.0.0.1:${port}/manager/`;
+  await writePortFile(port);
 
   // 服务器端口(用实际分配到的)
   const actualServer = server.listen(port, '127.0.0.1', () => {
@@ -818,6 +846,7 @@ async function bootstrap() {
     log('📂', `tools/    = ${TOOLS}`);
     log('📂', `dist-manager/ = ${MANAGER}`);
     log('📂', `viewer/   = ${VIEWER}`);
+    log('📄', `日志: ${LOG_FILE}`);
     log('⏹ ', `按 Ctrl+C 停止服务`);
   });
 
@@ -831,6 +860,7 @@ async function bootstrap() {
   // Ctrl+C 优雅关闭
   const shutdown = () => {
     log('\n🛑', '正在关闭服务...');
+    void removePortFile();
     actualServer.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 500);
   };
@@ -840,5 +870,6 @@ async function bootstrap() {
 
 bootstrap().catch((e) => {
   console.error('❌ 启动失败:', e);
+  void appendLog(`❌ 启动失败: ${e && e.stack ? e.stack : e}`);
   process.exit(1);
 });

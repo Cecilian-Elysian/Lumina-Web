@@ -1,0 +1,20 @@
+# Windows 批处理必须 CRLF:cmd.exe 解析 LF-only 的 .bat 会静默异常
+# (曾发生:tools\start.bat 为 LF,双击无任何反应,报 '/d' 不是内部或外部命令)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Unix 脚本保持 LF
+*.sh text eol=lf
+
+# 默认:提交时归一为 LF,检出时按平台转换
+* text=auto
+
+# 二进制文件不做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
