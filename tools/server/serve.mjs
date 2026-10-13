@@ -369,34 +369,59 @@ function readBodyRaw(req, MAX) {
  * 成功:{ ok:true, data:{ url } };失败:{ ok:false, error }。
  */
 async function uploadImage(req, res) {
+  const MAX = 20 * 1024 * 1024;
+  const fail = (status, msg) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: msg }));
+  };
+
+  // ── 参数校验(400/413):与上游故障(502)区分 ──
+  const contentType = req.headers['content-type'] || '';
+  if (!/^multipart\/form-data/i.test(contentType)) {
+    return fail(400, '必须是 multipart/form-data');
+  }
+  let body;
   try {
-    const MAX = 20 * 1024 * 1024;
-    const contentType = req.headers['content-type'] || '';
-    if (!/^multipart\/form-data/i.test(contentType)) {
-      throw new Error('必须是 multipart/form-data');
-    }
-    const body = await readBodyRaw(req, MAX);
-
+    body = await readBodyRaw(req, MAX);
+  } catch (e) {
+    return fail(413, e.message);
+  }
+  let uploadUrl, token;
+  try {
     const CONFIG = await readViewerConfig();
-    if (!CONFIG.apiBase) throw new Error('config.ts 未配置 apiBase,无法上传');
-    const token = CONFIG.token || await readLocalSecret('QUBU_TOKEN');
-    if (!token) throw new Error('未找到图床 token(请在 .dev.vars 配置 QUBU_TOKEN)');
-
+    if (!CONFIG.apiBase) return fail(400, 'config.ts 未配置 apiBase,无法上传');
+    token = CONFIG.token || await readLocalSecret('QUBU_TOKEN');
+    if (!token) return fail(400, '未找到图床 token(请在 .dev.vars 配置 QUBU_TOKEN)');
     // Lsky Pro 上传端点固定为 {apiBase}/upload(apiBase 形如 https://7bu.top/api/v1)
-    const uploadUrl = CONFIG.apiBase.replace(/\/+$/, '') + '/upload';
+    uploadUrl = CONFIG.apiBase.replace(/\/+$/, '') + '/upload';
+  } catch (e) {
+    return fail(500, '读取图床配置失败:' + e.message);
+  }
+
+  // ── 转发到图床 ──
+  try {
     const upRes = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
+        // Accept 必须带 application/json:否则图床按浏览器请求处理,返回 HTML 页面而非 JSON 错误
+        'Accept': 'application/json',
         'Content-Type': contentType,
-        'Content-Length': body.length,
+        // ⚠ 不要手写 Content-Length:undici 会改用 chunked 传输,PHP 后端解析 chunked
+        //   multipart 会失败并返回空 200;交给 undici 按 Uint8Array 长度自动计算
         Authorization: 'Bearer ' + token,
       },
       body: new Uint8Array(body),
     });
-    const json = await upRes.json().catch(() => null);
+    const raw = await upRes.text();
+    let json = null;
+    try { json = JSON.parse(raw); } catch { /* 非 JSON(多为 HTML 登录页) */ }
     if (!upRes.ok || !json || json.status === false) {
-      const msg = (json && (json.message || json.error)) || ('HTTP ' + upRes.status);
-      throw new Error('图床上传失败:' + msg);
+      // 图床异常时 message 可能为空 → 回显响应片段,便于排查(401/HTML 登录页等)
+      const detail = (json && (json.message || json.error))
+        || raw.slice(0, 160).replace(/\s+/g, ' ')
+        || ('HTTP ' + upRes.status);
+      const ct = (upRes.headers.get('content-type') || '').split(';')[0];
+      throw new Error('图床上传失败:' + detail + (ct && !ct.includes('json') ? `(${ct})` : ''));
     }
     const url = json?.data?.links?.url;
     if (!url) throw new Error('图床返回缺少 data.links.url');
