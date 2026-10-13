@@ -9,6 +9,10 @@
 # 默认:提交时归一为 LF,检出时按平台转换
 * text=auto
 
+# .gitattributes 自身固定 LF,避免各平台解析差异
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
 # 二进制文件不做换行转换
 *.png binary
 *.jpg binary
