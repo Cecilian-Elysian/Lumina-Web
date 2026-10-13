@@ -18,6 +18,7 @@
  *   GET  /api/focal-points              → 读 src/site/focalPoints.ts
  *   POST /api/focal-points              → 写 src/site/focalPoints.ts
  *   GET  /api/proxy-images              → 尝试拉取 viewer 上游图床
+ *   POST /api/upload-image              → 代理上传图片到图床(Lsky Pro 协议)
  *   POST /api/sync-deploy               → 提交并推送数据文件(body 可选 {file})
  *   POST /api/run-ai                    → spawn AI 工具,SSE 流式输出
  *   GET  /api/albums                    → 读 src/site/albums.ts
@@ -333,6 +334,83 @@ function readBody(req) {
   });
 }
 
+/**
+ * 读二进制请求体(上传用)。上限 MAX,超限立刻断开。
+ * 与 readBody(1MB/utf8)分开:图片是二进制且更大。
+ */
+function readBodyRaw(req, MAX) {
+  return new Promise((resolve, reject) => {
+    const declared = parseInt(req.headers['content-length'] || '0', 10);
+    if (Number.isFinite(declared) && declared > MAX) {
+      req.destroy();
+      reject(new Error('文件超过 ' + Math.round(MAX / 1024 / 1024) + 'MB 上限'));
+      return;
+    }
+    const chunks = [];
+    let total = 0;
+    req.on('data', (c) => {
+      total += c.length;
+      if (total > MAX) {
+        req.destroy();
+        reject(new Error('文件超过 ' + Math.round(MAX / 1024 / 1024) + 'MB 上限'));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+/**
+ * POST /api/upload-image — 代理上传图片到图床(Lsky Pro 协议)。
+ * 客户端的 multipart 原样转发到 {apiBase}/upload,token 取
+ * CONFIG.token 或 .dev.vars 的 QUBU_TOKEN,绝不回传浏览器。
+ * 成功:{ ok:true, data:{ url } };失败:{ ok:false, error }。
+ */
+async function uploadImage(req, res) {
+  try {
+    const MAX = 20 * 1024 * 1024;
+    const contentType = req.headers['content-type'] || '';
+    if (!/^multipart\/form-data/i.test(contentType)) {
+      throw new Error('必须是 multipart/form-data');
+    }
+    const body = await readBodyRaw(req, MAX);
+
+    const CONFIG = await readViewerConfig();
+    if (!CONFIG.apiBase) throw new Error('config.ts 未配置 apiBase,无法上传');
+    const token = CONFIG.token || await readLocalSecret('QUBU_TOKEN');
+    if (!token) throw new Error('未找到图床 token(请在 .dev.vars 配置 QUBU_TOKEN)');
+
+    // Lsky Pro 上传端点固定为 {apiBase}/upload(apiBase 形如 https://7bu.top/api/v1)
+    const uploadUrl = CONFIG.apiBase.replace(/\/+$/, '') + '/upload';
+    const upRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': body.length,
+        Authorization: 'Bearer ' + token,
+      },
+      body: new Uint8Array(body),
+    });
+    const json = await upRes.json().catch(() => null);
+    if (!upRes.ok || !json || json.status === false) {
+      const msg = (json && (json.message || json.error)) || ('HTTP ' + upRes.status);
+      throw new Error('图床上传失败:' + msg);
+    }
+    const url = json?.data?.links?.url;
+    if (!url) throw new Error('图床返回缺少 data.links.url');
+
+    log('🖼', `上传成功: ${url}`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, data: { url, name: json?.data?.name || '' } }));
+  } catch (e) {
+    log('❌', `上传失败: ${e.message}`);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: e.message }));
+  }
+}
+
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -508,6 +586,11 @@ async function handle(req, res, url) {
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, data }));
+    return;
+  }
+
+  if (pathname === '/api/upload-image' && req.method === 'POST') {
+    await uploadImage(req, res);
     return;
   }
 

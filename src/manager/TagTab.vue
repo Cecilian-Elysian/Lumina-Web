@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, watchEffect, onMounted } from 'vue';
 import type { TagsDoc } from '@/shared/types';
 import { fileName } from '@/shared/utils';
 import {
-  useManagerState, loadTags, saveTags, loadImages, syncDeploy, toast,
+  useManagerState, loadTags, saveTags, loadImages, toast,
 } from './api';
+import { registerSaver, setDirty } from './queue';
 
 /* ============================================================
  * 标签 Tab — 给每张图打标签,写入 src/site/tags.ts
  *   - 编辑进 localStorage(lumina.tags.local),null = 清空该图
- *   - 与静态 tags.ts 合并预览;保存时合并覆盖写回
+ *   - 与静态 tags.ts 合并预览;保存走操作队列批量落盘
  *   - 键 = Image.url(原图直链),与焦点/图集一致
  * ============================================================ */
 
 const LS_TAGS_KEY = 'lumina.tags.local';
-const DATA_FILE = 'src/site/tags.ts';
 
 const state = useManagerState();
 
@@ -124,40 +124,23 @@ async function fetchImages() {
   toast(`已加载 ${list.length} 张图片`, 'success');
 }
 
-/* ── 保存到 viewer ── */
-async function saveTagsToViewer() {
-  if (dirtyCount.value === 0) {
-    toast('没有改动需要保存');
-    return;
-  }
+/* ── 保存到 viewer(操作队列批量调用,无确认) ── */
+async function saveTagsCore(): Promise<boolean> {
+  if (dirtyCount.value === 0) return true;
   const merged: TagsDoc = { ...staticTags.value };
   for (const [url, tags] of Object.entries(lsTags)) {
     if (tags == null || tags.length === 0) delete merged[url];
     else merged[url] = tags;
   }
-  const tagTotal = Object.values(merged).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
-  if (!confirm(`将覆盖 viewer 的 tags.ts:\n  • ${dirtyCount.value} 张图变动\n  • 共 ${Object.keys(merged).length} 张图 / ${tagTotal} 个标签\n\n确定继续?`)) return;
-
   const r = await saveTags(merged);
-  if (r == null) return;
+  if (r == null) return false;
   toast(`已写入 tags.ts (${r} 张图带标签)`, 'success');
   await reloadTags();
+  return true;
 }
 
-/* ── 同步并部署 ── */
-const syncing = ref(false);
-
-async function syncTags() {
-  if (dirtyCount.value > 0) {
-    toast('请先完成保存,再执行同步', 'error');
-    return;
-  }
-  if (!confirm('将提交 tags.ts 并推送到 GitHub,触发 Cloudflare 部署。继续吗?')) return;
-  syncing.value = true;
-  const msg = await syncDeploy(DATA_FILE);
-  syncing.value = false;
-  if (msg) toast(msg, 'success');
-}
+registerSaver('tags', saveTagsCore);
+watchEffect(() => setDirty('tags', dirtyCount.value > 0));
 
 onMounted(async () => {
   await reloadTags();
@@ -170,13 +153,9 @@ function openInNewTab(url: string) {
 </script>
 
 <template>
-  <!-- 操作按钮(传送到顶栏) -->
+  <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
   <Teleport to="#bar-right">
     <button class="btn" @click="fetchImages">↻ 读取图片列表</button>
-    <button class="btn" @click="saveTagsToViewer">💾 保存到 viewer</button>
-    <button class="btn btn-primary" :disabled="syncing" @click="syncTags">
-      {{ syncing ? '同步中...' : '↥ 同步并部署' }}
-    </button>
   </Teleport>
 
   <!-- 状态条 -->

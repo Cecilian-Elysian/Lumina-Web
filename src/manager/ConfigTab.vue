@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, watchEffect, onMounted } from 'vue';
 import {
-  loadViewerConfig, saveConfig, syncDeploy, toast,
+  loadViewerConfig, saveConfig, toast,
   CONFIG_WHITELIST, type ConfigPatch,
 } from './api';
+import { registerSaver, setDirty } from './queue';
 
 /* ============================================================
  * 配置 Tab — 编辑 src/site/config.ts 的版面/拉取字段
  *   - 仅白名单字段可改(rows/cardWidth/perPage/thumbWidth/lazyRootMargin)
  *   - mode/token/字段映射等敏感键不可见改(服务端二次校验)
- *   - 保存 = 合并写回;同步 = git 提交推送触发 CF 部署
+ *   - 保存走操作队列批量落盘;同步统一走「保存并部署」
  *   ⚠ 保存会重写 config.ts,手工注释会丢失(字段值保留)
  * ============================================================ */
-
-const DATA_FILE = 'src/site/config.ts';
 
 const form = reactive({
   rows: 3,
@@ -26,8 +25,6 @@ const form = reactive({
 const snapshot = ref('');
 
 const loading = ref(true);
-const saving = ref(false);
-const syncing = ref(false);
 
 function fillForm(cfg: NonNullable<Awaited<ReturnType<typeof loadViewerConfig>>>) {
   form.rows = cfg.rows ?? 3;
@@ -71,50 +68,30 @@ async function reload() {
   loading.value = false;
 }
 
-async function onSave() {
+/* ── 保存(操作队列批量调用,无确认;校验失败视为未保存) ── */
+async function saveConfigCore(): Promise<boolean> {
   if (validationError.value) {
     toast(validationError.value, 'error');
-    return;
+    return false;
   }
-  if (!dirty.value) {
-    toast('没有改动需要保存');
-    return;
-  }
-  if (!confirm('将合并写回 config.ts(白名单字段)。\n⚠ 手工注释会被生成头替换,token/mode 不受影响。\n\n确定继续?')) return;
-  saving.value = true;
+  if (!dirty.value) return true;
   const updated = await saveConfig(currentPatch());
-  saving.value = false;
-  if (updated) {
-    toast(`已写回 config.ts(${updated.join(', ')})`, 'success');
-    await reload();
-  }
+  if (!updated) return false;
+  toast(`已写回 config.ts(${updated.join(', ')})`, 'success');
+  await reload();
+  return true;
 }
 
-async function onSync() {
-  if (dirty.value) {
-    toast('请先完成保存,再执行同步', 'error');
-    return;
-  }
-  if (!confirm('将提交 config.ts 并推送到 GitHub,触发 Cloudflare 部署。继续吗?')) return;
-  syncing.value = true;
-  const msg = await syncDeploy(DATA_FILE);
-  syncing.value = false;
-  if (msg) toast(msg, 'success');
-}
+registerSaver('config', saveConfigCore);
+watchEffect(() => setDirty('config', dirty.value));
 
 onMounted(reload);
 </script>
 
 <template>
-  <!-- 操作按钮(传送到顶栏) -->
+  <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
   <Teleport to="#bar-right">
     <button class="btn" :disabled="loading" @click="reload">↻ 重新读取</button>
-    <button class="btn" :disabled="loading || saving" @click="onSave">
-      {{ saving ? '保存中...' : '💾 保存到 viewer' }}
-    </button>
-    <button class="btn btn-primary" :disabled="loading || syncing" @click="onSync">
-      {{ syncing ? '同步中...' : '↥ 同步并部署' }}
-    </button>
   </Teleport>
 
   <main class="config-pane tab-pane">

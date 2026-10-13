@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, watchEffect, onMounted } from 'vue';
 import AlbumChip from './AlbumChip.vue';
 import AlbumModal from './AlbumModal.vue';
 import type { AlbumMeta, AlbumsDoc } from '@/shared/types';
 import { fileName } from '@/shared/utils';
 import {
   useManagerState, loadAlbums, saveAlbums, addAlbum,
-  renameAlbum, deleteAlbum, loadImages, syncDeploy, toast,
+  renameAlbum, deleteAlbum, loadImages, toast,
 } from './api';
+import { registerSaver, setDirty } from './queue';
+import { confirmAsync } from './confirm';
 
 const LS_ALBUM_KEY = 'lumina.album.local';
-const DATA_FILE = 'src/site/albums.ts';
 
 const state = useManagerState();
 
@@ -144,7 +145,13 @@ async function onDeleteAlbum(id: string) {
   for (const img of state.images.value) {
     if (mergedAlbumId(img.url) === id) count++;
   }
-  if (!confirm(`删除图集「${meta.name}」?\n\n该图集下的 ${count} 张图片将自动降级为「未分组」。\n(图片本身不会被删除)`)) return;
+  const ok = await confirmAsync({
+    title: `删除图集「${meta.name}」`,
+    message: `该图集下的 ${count} 张图片将自动降级为「未分组」(图片本身不会被删除)。`,
+    danger: true,
+    confirmText: '删除',
+  });
+  if (!ok) return;
   const removed = await deleteAlbum(id);
   if (removed != null) {
     toast(`已删除图集「${meta.name}」(${removed} 张降级)`, 'success');
@@ -152,40 +159,23 @@ async function onDeleteAlbum(id: string) {
   }
 }
 
-/* ── 保存到 viewer ── */
-async function saveAlbumsToViewer() {
-  if (dirtyCount.value === 0) {
-    toast('没有改动需要保存');
-    return;
-  }
+/* ── 保存到 viewer(操作队列批量调用,无确认) ── */
+async function saveAlbumsCore(): Promise<boolean> {
+  if (dirtyCount.value === 0) return true;
   const merged: AlbumsDoc = { ...staticAlbums.value };
   for (const [url, aid] of Object.entries(lsAlbums)) {
     if (aid == null) delete merged[url];
     else merged[url] = aid;
   }
-  const mapCount = Object.keys(merged).filter((k) => k !== '_meta').length;
-  if (!confirm(`将覆盖 viewer 的 albums.ts:\n  • ${dirtyCount.value} 张图归属变动\n  • 共 ${mapCount} 张图映射\n\n确定继续?`)) return;
-
   const r = await saveAlbums(merged);
-  if (!r) return;
+  if (!r) return false;
   toast(`已写入 albums.ts (图集 ${r.metaCount} 个, 图片 ${r.imageCount} 张)`, 'success');
   await reloadAlbums();
+  return true;
 }
 
-/* ── 同步并部署 ── */
-const syncing = ref(false);
-
-async function syncAlbums() {
-  if (dirtyCount.value > 0) {
-    toast('请先完成保存,再执行同步', 'error');
-    return;
-  }
-  if (!confirm('将提交 albums.ts 并推送到 GitHub,触发 Cloudflare 部署。继续吗?')) return;
-  syncing.value = true;
-  const msg = await syncDeploy(DATA_FILE);
-  syncing.value = false;
-  if (msg) toast(msg, 'success');
-}
+registerSaver('album', saveAlbumsCore);
+watchEffect(() => setDirty('album', dirtyCount.value > 0));
 
 onMounted(async () => {
   await reloadAlbums();
@@ -211,13 +201,9 @@ function openInNewTab(url: string) {
 </script>
 
 <template>
-  <!-- 操作按钮(传送到顶栏) -->
+  <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
   <Teleport to="#bar-right">
     <button class="btn" @click="fetchImages">↻ 读取图片列表</button>
-    <button class="btn" @click="saveAlbumsToViewer">💾 保存到 viewer</button>
-    <button class="btn btn-primary" :disabled="syncing" @click="syncAlbums">
-      {{ syncing ? '同步中...' : '↥ 同步并部署' }}
-    </button>
   </Teleport>
 
   <!-- 状态条 -->

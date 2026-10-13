@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, computed, reactive, watchEffect, onMounted, onUnmounted } from 'vue';
 import FocalEditor from './FocalEditor.vue';
 import type { FocalPoint } from '@/shared/types';
 import {
   useManagerState, loadFocalPoints, saveFocalPoints, loadImages,
-  syncDeploy, runAi, toast,
+  runAi, toast,
 } from './api';
+import { registerSaver, setDirty } from './queue';
+import { confirmAsync } from './confirm';
 
 const LS_FOCAL_KEY = 'lumina.focal.local';
-const DATA_FILE = 'src/site/focalPoints.ts';
 
 const state = useManagerState();
 
@@ -78,48 +79,32 @@ function clearPoint() {
   toast('已从本次会话中清除', 'success');
 }
 
-/* ── 保存到 viewer ── */
-async function saveFocal() {
-  if (dirtyCount.value === 0) {
-    toast('没有改动需要保存');
-    return;
-  }
+/* ── 保存到 viewer(操作队列批量调用,无确认) ── */
+function buildMerged(): Record<string, FocalPoint> {
   const merged: Record<string, FocalPoint> = { ...staticFocal.value };
   for (const url of focalRemoved.value) delete merged[url];
   for (const [url, p] of Object.entries(lsFocal)) merged[url] = p;
+  return merged;
+}
 
-  if (!confirm(`将覆盖 viewer 的 focalPoints.ts(共 ${Object.keys(merged).length} 项)。\n\n确定继续?`)) return;
-
-  const count = await saveFocalPoints(merged);
-  if (count == null) return;
+async function saveFocalCore(): Promise<boolean> {
+  if (dirtyCount.value === 0) return true;
+  const count = await saveFocalPoints(buildMerged());
+  if (count == null) return false;
   toast(`已写入 viewer 的 focalPoints.ts(${count} 项)`, 'success');
   await reloadFocal();
+  return true;
 }
 
-/* ── 同步并部署 ── */
-const syncing = ref(false);
-
-async function syncFocal() {
-  if (dirtyCount.value > 0) {
-    toast('请先完成保存,再执行同步', 'error');
-    return;
-  }
-  if (!confirm('将提交 focalPoints.ts 并推送到 GitHub,触发 Cloudflare 部署。继续吗?')) return;
-  syncing.value = true;
-  const msg = await syncDeploy(DATA_FILE);
-  syncing.value = false;
-  if (msg) toast(msg, 'success');
-}
+registerSaver('focal', saveFocalCore);
+watchEffect(() => setDirty('focal', dirtyCount.value > 0));
 
 /* ── 导出 JSON ── */
 const exportOpen = ref(false);
 const exportText = ref('');
 
 function openExport() {
-  const merged: Record<string, FocalPoint> = { ...staticFocal.value };
-  for (const url of focalRemoved.value) delete merged[url];
-  for (const [url, p] of Object.entries(lsFocal)) merged[url] = p;
-  exportText.value = `export const FOCAL_POINTS = ${JSON.stringify(merged, null, 2)};\n`;
+  exportText.value = `export const FOCAL_POINTS = ${JSON.stringify(buildMerged(), null, 2)};\n`;
   exportOpen.value = true;
 }
 
@@ -148,7 +133,13 @@ const aiRunning = ref(false);
 const aiProgress = ref<{ cur: number; total: number } | null>(null);
 
 async function startAi() {
-  if (!confirm('AI 批量分析将:\n1. 启动 Node 工具下载每张图(约 60 张)\n2. 用 @vladmandic/face-api 检测人脸\n3. 写回 viewer 的 focalPoints.ts\n\n首次运行需下载模型(~6MB),可能需要几分钟。\n\n确定继续?')) return;
+  const ok = await confirmAsync({
+    title: 'AI 批量分析',
+    message: '将启动 Node 工具下载每张图(约 60 张),用 face-api 检测人脸后写回 viewer 的 focalPoints.ts。'
+      + '首次运行需下载模型(~6MB),可能需要几分钟。',
+    confirmText: '开始分析',
+  });
+  if (!ok) return;
 
   aiOpen.value = true;
   aiLog.value = '';
@@ -190,14 +181,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 操作按钮(传送到顶栏) -->
+  <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
   <Teleport to="#bar-right">
     <button class="btn" @click="fetchImages">↻ 读取图片列表</button>
     <button class="btn btn-primary" @click="startAi">🧠 AI 批量分析</button>
-    <button class="btn" @click="saveFocal">💾 保存到 viewer</button>
-    <button class="btn btn-primary" :disabled="syncing" @click="syncFocal">
-      {{ syncing ? '同步中...' : '↥ 同步并部署' }}
-    </button>
     <button class="btn btn-ghost" @click="openExport">📋 导出 JSON</button>
   </Teleport>
 
