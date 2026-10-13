@@ -79,22 +79,46 @@ function buildDirectHeaders(): Record<string, string> {
   return headers;
 }
 
+/** loadImages 的返回(永不 reject) */
+type LoadResult = { images: Image[]; error: string | null };
+
+/** 列表内存缓存 TTL:窗口内 SPA 换页/开屏保复用同一份名单,不重复回源 */
+const LIST_TTL_MS = 60_000;
+let listCache: { at: number; data: LoadResult } | null = null;
+/** single-flight:TTL 过期瞬间多个组件并发调用只发一次请求 */
+let inflight: Promise<LoadResult> | null = null;
+
 /**
  * 拉取图片列表。永不 reject:上游失败时回退兜底图并返回错误信息。
+ * 60s 内存缓存 + 并发去重;仅缓存成功且非兜底的结果(失败下次自动重试)。
  * @returns { images, error? }
  */
-export async function loadImages(): Promise<{ images: Image[]; error: string | null }> {
+export async function loadImages(): Promise<LoadResult> {
   // 显式关闭图床 API → 直接走兜底,不发起任何网络请求
   if (CONFIG.apiDisabled) {
     return { images: toFallbackImages(CONFIG.fallbackImages), error: null };
   }
 
+  if (listCache && Date.now() - listCache.at < LIST_TTL_MS) {
+    return listCache.data;
+  }
+  if (!inflight) {
+    inflight = fetchList().finally(() => { inflight = null; });
+  }
+  const data = await inflight;
+  if (!isFallback(data.images)) {
+    listCache = { at: Date.now(), data };
+  }
+  return data;
+}
+
+/** 实际请求(proxy / direct 两模式 + 静默回退),不含缓存逻辑 */
+async function fetchList(): Promise<LoadResult> {
   let url: string;
   let headers: Record<string, string>;
 
   if (CONFIG.mode === 'proxy') {
-    // &_t= 时间戳绕开浏览器/CDN 对列表的缓存
-    url = '/api/images?per_page=' + CONFIG.perPage + '&_t=' + Date.now();
+    url = '/api/images?per_page=' + CONFIG.perPage;
     headers = { Accept: 'application/json' };
   } else {
     if (!CONFIG.apiBase || !CONFIG.token) {

@@ -64,6 +64,28 @@ const pausedRows = ref(new Set<number>());
 
 let safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
+/* ---- 开屏动画(每会话首次进主页播放,进度条绑真实加载) ---- */
+const SPLASH_KEY = 'lumina.splash.seen';
+const SPLASH_MIN_MS = 600;
+/** 会话内已播过 → 不再显示;决定播放时立即写会话标记(中途退出也不重播) */
+const splashActive = ref(sessionStorage.getItem(SPLASH_KEY) !== 'true');
+let splashShownAt = 0;
+let splashTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 进度百分比:列表未到时为 0(由 is-idle 爬动动画占位),之后 = 已就绪/总数 */
+const splashPct = computed(() =>
+  total.value > 0
+    ? Math.min(100, Math.round((loadedUrls.value.size / total.value) * 100))
+    : 0,
+);
+
+/** allLoaded 后退出开屏(保证最短显示时长,防闪烁) */
+watch(allLoaded, (done) => {
+  if (!done || !splashActive.value) return;
+  const wait = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt));
+  splashTimer = setTimeout(() => { splashActive.value = false; }, wait);
+});
+
 /** 按行数把图片轮转分桶 + 行内打乱(纯函数,便于测试/重建) */
 function buildRows(list: Image[], n: number): RowItem[][] {
   const buckets: RowItem[][] = Array.from({ length: n }, () => []);
@@ -312,6 +334,10 @@ function resetTouchState() {
 }
 
 onMounted(async () => {
+  if (splashActive.value) {
+    sessionStorage.setItem(SPLASH_KEY, 'true');
+    splashShownAt = Date.now();
+  }
   const { images } = await loadImages();
 
   const shuffled = shuffle(images.slice());
@@ -331,6 +357,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (safetyTimer) clearTimeout(safetyTimer);
+  if (splashTimer) clearTimeout(splashTimer);
   if (justDraggedTimer) clearTimeout(justDraggedTimer);
   if (pendingOpenTimer) clearTimeout(pendingOpenTimer);
   if (rafId != null) cancelAnimationFrame(rafId);
@@ -339,7 +366,13 @@ onUnmounted(() => {
 
 <template>
   <main class="wall" :class="{ ready: allLoaded }" aria-label="流动图片墙">
-    <div v-if="total === 0" class="wall-loading">加载中…</div>
+    <div v-if="total === 0 && !splashActive" class="wall-loading">加载中…</div>
+    <!-- 开屏已播过、图片仍在加载时的轻量进度提示(避免整片空白) -->
+    <div
+      v-else-if="!splashActive && total > 0 && !allLoaded"
+      class="wall-progress"
+      role="status"
+    >加载图片 {{ loadedUrls.size }} / {{ total }}</div>
 
     <div
       v-for="(row, r) in displayRows"
@@ -376,5 +409,26 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- 开屏动画:每会话首次进主页播放,模糊缩放淡出(styles.css §20) -->
+    <Transition name="splash">
+      <div v-if="splashActive" class="splash" role="status" aria-live="polite">
+        <div class="splash-inner">
+          <div class="splash-halo">
+            <div class="splash-ring" aria-hidden="true"></div>
+            <div class="splash-core" aria-hidden="true">L</div>
+          </div>
+          <h1 class="splash-title">LUMINA</h1>
+          <p class="splash-sub">LOADING GALLERY</p>
+          <div class="splash-bar" aria-hidden="true">
+            <div
+              class="splash-bar-fill"
+              :class="{ 'is-idle': total === 0 }"
+              :style="{ width: (splashPct || 8) + '%' }"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </main>
 </template>
