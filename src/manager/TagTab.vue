@@ -189,7 +189,7 @@ function openInNewTab(url: string) {
     </datalist>
 
     <!-- 图片网格 -->
-    <div class="album-grid">
+    <div class="album-grid tag-grid">
       <div v-if="!state.imagesLoaded.value" class="empty">点击右上"读取图片列表"开始</div>
       <div
         v-for="img in filteredImages"
@@ -203,12 +203,14 @@ function openInNewTab(url: string) {
           title="清空该图全部标签"
           @click.stop="clearTags(img.url)"
         >✕</button>
-        <img
-          :src="img.url"
-          alt=""
-          loading="lazy"
-          @click="openInNewTab(img.url)"
-        >
+        <div class="album-frame" title="点击看大图" @click="openInNewTab(img.url)">
+          <img
+            :src="img.thumb || img.url"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          >
+        </div>
         <div class="album-tile-body">
           <div class="album-tile-name" :title="img.url">{{ fileName(img.url) }}</div>
           <div class="tag-chips">

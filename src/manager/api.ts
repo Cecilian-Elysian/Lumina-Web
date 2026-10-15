@@ -55,7 +55,10 @@ export function useToast() {
 /* ── 共享状态(图片列表,App 注入各 Tab) ── */
 
 export interface MImage {
+  /** 原图直链:焦点/图集/标签的查表键,也是"打开大图"的目标 */
   url: string;
+  /** 缩略图(约 600w):网格里只加载它,上游没给时回落为 url */
+  thumb: string;
   name: string;
 }
 
@@ -90,6 +93,8 @@ export interface ViewerConfig {
   lazyRootMargin?: string;
   imgField: string;
   imgUrlField: string;
+  /** 缩略图字段路径(服务端 /api/viewer-config 已返回,历史版本客户端漏声明) */
+  imgThumbField?: string;
   imgNameField: string;
   fallbackImages: string[];
 }
@@ -210,31 +215,32 @@ export async function loadImages(): Promise<{ list: MImage[]; usedFallback: bool
   const cfg = await loadViewerConfig();
   if (!cfg) return { list: [], usedFallback: false };
 
-  let urls: string[] = [];
-  let names: string[] = [];
+  let rows: MImage[] = [];
   try {
     const r = await fetch(`/api/proxy-images?per_page=${cfg.perPage || 60}`, { cache: 'no-store' });
     if (r.ok) {
       const json: unknown = await r.json();
       const arr = getByPath((json as { data?: unknown }).data, cfg.imgField);
       if (!Array.isArray(arr)) throw new Error('上游 imgField 未命中数组');
-      urls = arr.map((it) => String(getByPath(it, cfg.imgUrlField) ?? '')).filter(Boolean);
-      names = arr.map((it) => String(getByPath(it, cfg.imgNameField) ?? ''));
+      // 先组装再过滤:分开 map + 只过滤 url 会让 name/thumb 整体错位
+      rows = (arr as Record<string, unknown>[])
+        .map((it) => {
+          const url = String(getByPath(it, cfg.imgUrlField) ?? '');
+          const thumb = String((cfg.imgThumbField && getByPath(it, cfg.imgThumbField)) || url);
+          return { url, thumb, name: String(getByPath(it, cfg.imgNameField) ?? '') };
+        })
+        .filter((it) => it.url);
     }
   } catch { /* 落到兜底 */ }
 
   let usedFallback = false;
-  if (!urls.length) {
-    urls = cfg.fallbackImages || [];
-    names = urls.map(() => '');
+  if (!rows.length) {
+    rows = (cfg.fallbackImages || []).map((u) => ({ url: u, thumb: u, name: '' }));
     usedFallback = true;
     toast('已使用兜底图列表(代理不可用)', 'warn');
   }
 
-  return {
-    list: urls.map((u, i) => ({ url: u, name: names[i] || '' })),
-    usedFallback,
-  };
+  return { list: rows, usedFallback };
 }
 
 /* ── 同步部署(git add/commit/push 指定文件) ── */

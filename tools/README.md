@@ -10,6 +10,7 @@ tools/
 ├── start.bat / start.sh         ← 终端启动器（Win / Unix）
 ├── dev.bat                      ← Windows 一站式：装依赖 + 启服务 + 打开浏览器(DevTools 自动开)
 ├── console.bat                  ← Windows 快捷键：服务已启时直接打开浏览器(DevTools 自动开)
+├── site.bat / site.sh           ← ★ 主站(Vue 站点)一键预览：build + wrangler pages dev + 开浏览器(真实图片)
 ├── package.json                 ← Node 依赖
 ├── README.md                    ← 本文件
 │
@@ -28,6 +29,17 @@ tools/
 ---
 
 ## 快速开始
+
+### 0. 预览主站（Vue 站点本身，真实图片）
+
+和下面的 Manager 编辑器是两回事。`site.bat` 会自动 `npm run build` 再用
+`npx wrangler pages dev dist --port 8001` 起服务 —— 因为 `/api/images` 这个
+Pages Function 只有 wrangler 会提供，纯 `npm run dev`（Vite）只会显示 16 张兜底占位图。
+
+**Windows：** 双击 `site.bat`
+**macOS / Linux：** `./tools/site.sh`
+
+服务跑在独立的 `Lumina Site` 黑窗口里，关掉它或在里面 Ctrl+C 即停止。改完 `src/` 再跑一次即可（每次启动都会重新 build）。
 
 ### 1. 启动可视化编辑器
 

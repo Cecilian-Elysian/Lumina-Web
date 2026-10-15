@@ -5,6 +5,10 @@ Vue 3 + Vite + TypeScript 静态站点：多行叠层流动图片墙 + 图集浏
 
 ## 开始
 
+> **Windows 一键启动：双击 `tools/site.bat`**（自动装依赖 → build → 起服务器 → 开浏览器并带 DevTools）
+> **macOS / Linux 一键启动：`./tools/site.sh`**
+> 想手动敲命令就用下面这份：
+
 ```bash
 npm install
 
@@ -55,6 +59,17 @@ npm run db:schema:remote           # 建表（本地开发用 db:schema:local）
 - 统计/点赞接口无鉴权，个人站可接受；UV 按 `sha256(IP+UA+日)` 按日轮转，不存原始 IP
 - AI 焦点分析是 merge 不是覆盖，不会清掉手工标注的焦点
 
+## 本地预览主站
+
+- Windows：双击 `tools/site.bat`（一键：装依赖 + build + 起 wrangler + 开浏览器，DevTools 自动展开）
+- macOS / Linux：`./tools/site.sh`
+- 监听 `127.0.0.1:8001`，走真实图床数据（等价于「开始」里的方式一）
+- 每次启动都会重新 build，所以看到的一定是最新代码；改完 `src/` 再跑一次即可
+- 服务跑在独立的 `Lumina Site` 黑窗口里：关掉那个窗口、或在里面按 Ctrl+C 即停止
+- 缺 `.dev.vars` / `QUBU_TOKEN` 时启动器会直接报错停下（否则只会看到 16 张兜底占位图）
+- 已在运行时重复双击不会起第二份服务，只会重新打开浏览器
+- 没装过 wrangler 时首次要联网下载（1-3 分钟）；提示登录就先跑 `npx wrangler login`
+
 ## 本地 Manager
 
 - Windows：双击 `tools/dev.bat`（一键装依赖 + 启动 + 开浏览器）；`tools/console.bat` 新开标签
@@ -90,9 +105,15 @@ schema.sql      D1 表结构（daily_stats / visitors / likes）
 - [x] 访客统计(页脚胶囊 PV/UV + 悬浮今日数据,D1 按日聚合,爬虫跳过)
 - [x] 收藏夹(灯箱 ⭐ / 瀑布流角标 / 设置页「我的收藏」区块;localStorage 有序列表,导航「收藏」直达;图床下架自动过滤)
 - [x] 屏保模式(全屏交叉淡入 + Ken Burns,焦点防裁脸;设置页可调间隔/顺序/缩放,闲置自动进入默认关,`?screensaver=1` 直达)
+- [x] 主页内容动态轮换(登台窗口 + 每行重排,定时换掉一批图;设置页可开关/调间隔;系统「减少动态效果」时自动停)
 - [ ] 设置搭建(站长端深水区:数据源切换 UI)
 
 ## 日志记录
+
+- 2026-10-15 (v5.4) 二次审查修复 + 开屏改造。**①预热登记键错配(核心收益此前归零)**:`preloadItems` 一直预热 `img.thumb` 并用 thumb URL 登记 `loadedUrls`,而模板判定 `is-loaded` 查的是原图 `img.url`,两者永不相交 → 「新卡不淡入闪白」从未生效,且 `loadedUrls` 混入永不命中的条目。现预热按 `devicePixelRatio >= 2` 选候选(高清屏暖 2x 原图,否则暖缩略图,与 srcset 实际请求一致),登记键统一用 `img.url`。**②鼠标悬停时仍会换图**:CSS 已按 `:hover` 暂停滚动,但轮换不知情 → 细看时整墙会淡出约 600ms 并在光标下换图;新增 `isRowHovered()`(遍历 `rowEls` 查 `:hover`)并入 `canRotate`。**③屏保播放时背后空转**:`canRotate` 补 `isScreensaverActive()`(与 `composables.lbOnKey` 的既有判断对齐),避免全屏遮罩下仍重建 DOM/预取图抢带宽。**④换班期间可命中透明卡片**:`opacity:0` 不禁用指针事件,`.wall.swapping .row-track` 补 `pointer-events:none`(与 JS 侧 `onCardClick` 的 `swapping` 守卫双保险)。**⑤开屏动画整块移除**:品牌光环 + LUMINA 标题 + 进度条的每会话开屏观感不佳且与真实进度脱节,删除脚本状态/计时器/模板标签与 `styles.css §20` 全部样式;**保留并独立化**两段加载提示——名单未到显示「加载中…」,图片下载中显示「加载图片 x / N」,不再受开屏开关约束。**⑥灰色占位卡修复(选 A)**:`.card img` 的 `background: var(--img-bg)` 被同元素 `opacity:0` 一起藏掉,占位底从未显示,图片下载期间墙是纯空白;现把占位底/圆角/阴影上移到 `.card`,图片只负责淡入 → 首屏先出一排灰色相框,逐张变清楚(悬停阴影与过渡同步跟到 `.card`,不加 `overflow:hidden` 以免裁掉悬停上移)。**测试**:未新增用例(行为修复,现有 156 项全过),typecheck + `build` + `build:manager` 通过,构建产物已逐项校验 8 项改动均生效。
+- 2026-10-15 (v5.2) 主页内容动态轮换。解决「主页反复播放同一批图、同一顺序」的无聊感。**机制**:新增纯函数模块 `site/wallRotate.ts`(`windowSize` 计算登台窗口张数:至少填满一屏/池子 60%/行数,封顶全量;`nextWindow` 环形取窗并前进游标,缺省步长 = 窗口一半保证相邻窗重叠)。`HomeView` 的 `gallery` 改为固定顺序全量池,`RowItem.gi` 恒指向池下标 → 灯箱 `open(gallery)` 的 ←/→ 导航始终正确;墙上只渲染一个「登台窗口」,到点后滑动窗口换掉约一半图 + 每行重新洗牌(内容与顺序双焕新),整圈走完重洗池子。**无缝切换**:轨道 DOM 保留(动画相位连续),换班时整墙按行错峰淡出(`.wall.swapping .row-track{opacity:0}` + `trackStyle` 注入 `transitionDelay`)在不可见时替换内容再淡入,无位置跳变;下一窗在间隔期用 `new Image()` 预热(仅暖缓存,开屏前不改 `loadedUrls` 以免误判就绪;墙就绪后预热成功才 `markLoaded`,避免新卡淡入闪白)。**暂停时机**:开屏中/后台(`visibilitychange`)/拖拽中/已双击暂停/灯箱打开/动画关闭 时不轮换,交互结束与回到前台重置计时器;`resize`(防抖)仅在需「变宽补卡」时重建,防循环露白。**设置**:`settings.ts` 新增 `autoRotate`(默认开)/`rotateSec`(默认 45,15–180 clamp)与 `ROTATE_RANGE/ROTATE_CHOICES`;设置页「图片墙设置」加「内容轮换」开关 + 「轮换间隔」分段(关时禁用)。**测试**:新增 `wallRotate.test.ts` 14 项(窗口尺寸边界/环形前进包裹/覆盖全池/防御),`settings.test.ts` 更新精确 `toEqual` 并 +3 项。根目录 150 项全过,typecheck + `npm run build` 通过。
+- 2026-10-15 (v5.2 审查修复) 代码审查后修 5 处。**①换班瞬间点卡片会开错图**:整圈重洗已换池、画面还是旧 `gi`,`onCardClick` 未拦 `swapping` → 现开头 `if (swapping.value) return`,与 `onRowDown` 既有拦截对齐。**②换班中 resize 并发两次换班**:`onResize`(防抖)补 `swapping.value` 早退,并改走统一的排定/兑现路径。**③预热与实际换班批次可能对不上**:新增「排定窗口」(`RotationPlan`)——`scheduleRotate` 时就把下一窗(含重洗后的池顺序)算好并预热,`rotateNow` 直接兑现,预热与换上来的必然同一批图,消除整圈重洗时新卡淡入闪白。**④超大图库窗口过重**:`wallRotate.WINDOW_MAX = 90`,`windowSize` 的比例项封顶(fill 项不受限,宁可超上限也不能循环露白);400 张时窗口由 240 降到 90,每次预热量减半以上。**⑤系统「减少动态效果」下不再自动轮换**:新增 `wallRotate.prefersReducedMotion()`(无 `matchMedia` 的老环境安全返回 false),`canRotate/canScheduleRotate` 均排除,并订阅媒体查询变化动态停/启(兼容旧 Safari `addListener`)。**测试**:`wallRotate.test.ts` +6(封顶 / 填屏下限可超上限 / reduced-motion 三分支),20 项。根目录 156 项全过,typecheck + `npm run build` 通过。
+- 2026-10-15 (v5.3) 主站本地预览一键启动。**背景**:此前只有手动敲 `npm run build` + `npx wrangler pages dev dist --port 8001` 才能看到真实图床数据(`npm run dev` 走 Vite、无 `/api/images`,只有 16 张兜底占位图),对非技术使用者门槛偏高。**新增**:`tools/site.bat`(Windows,ASCII + CRLF,规则见 `tools/start.bat` 头部)+ `tools/site.sh`(macOS/Linux)。流程完全照抄既有 `tools/dev.bat` 骨架:预检 node / `.dev.vars` / `node_modules` → `npm run build` → `start "Lumina Site" cmd /c "npx wrangler pages dev dist --port 8001"` → 单条 PowerShell 轮询 8001(超时 180s,首跑 npx 下载 wrangler 较慢)→ 探测 Chrome/Edge/默认浏览器并带 `--auto-open-devtools-for-tabs` 打开 `127.0.0.1:8001`。**设计取舍**:①wrangler 的登录提示/报错**不重定向到日志文件**,而是留在独立窗口里——藏起来会导致用户看不到提示、服务假装启动、最后超时(与 `dev.bat` 的 serve.mjs 不同,后者不会交互);②显式 `--port 8001` 让 URL 确定(与 README「开始」方式一同一端口),避免端口漂移导致开错页面;③`.dev.vars` / `QUBU_TOKEN` 缺失时**直接报错停下**,避免用户以为启动器坏了——实际是只会看到占位图;④幂等:8001 已在监听则跳过 build 与启动,只重新开浏览器。**验证**:用打了桩的副本(替换 `start "" "!` 开浏览器行为)跑通两条分支——已在运行分支首次实测**暴露并修掉一个真 bug**(`:SERVER_RUNNING` 缺 `goto OPEN_BROWSER`,会顺序落进 `:SERVER_TIMEOUT` 报错退出);另实测 `.dev.vars` 缺失分支正确拦截;`bash -n` 通过。**文档**:`README.md` 加「本地预览主站」小节 + 「开始」补一键入口,`tools/README.md` 目录树补两项。纯新增启动器与文档,未触碰任何业务代码,156 项测试与 typecheck 不受影响。
 
 - 2026-10-06 (v5.1) 三智能体代码审查修复(P0/P1 全量)。**P0**:ScreensaverOverlay 改为 `watch(active)` 驱动挂载/卸载副作用(原 `onMounted` 即锁 `body.overflow` 会锁死全站滚动),双 rAF 点亮首张保证从黑场真实淡入,退出时槽位复位、重入不残留旧图;`initScreensaver` 幂等 + `showToken` 世代守卫(hide 必胜,作废在途 show)+ `advancePlaylist` 空表防御 + 预加载改为「下一张」;`composables.lbOnKey` 屏保激活时不透传灯箱键盘(防 Esc 连关两层/隐形切图),`useLightbox` 加 `getCurrentInstance` 守卫(非组件上下文不再注册重复键盘监听);favorites 查询改 `computed Set` 索引(O(1))+ 空串键早退。**P1**:闲置重置 1s 节流(清除旧计时器不受节流影响)、`visibilitychange` 回可见重武装 + 后台跳过换图、URL 直达严格匹配 `screensaver=1`、Ken Burns 开关改 `animation-play-state`(冻结不重启不跳变)、设置页 `#favs` 滚动提前到拉列表之前(空态秒滚)、图床回退兜底图时收藏区区分「加载失败」文案、收藏缩略条接 `focalStyle` 防裁脸、瀑布流角标加 `visibility` 门控(消灭桌面隐形热区)、导航「收藏」项在 `#favs` 时高亮、灯箱 ⭐ 补 `aria-pressed`、masonry 角标样式归位。**测试**:新增 ScreensaverOverlay.spec 8 项(淡入/交叉/重入复位/免疫/提示/滚动锁协调/kenburns 冻结),screensaver.test +5(空列表/两图轮换/hide 竞态/URL 直达/后台跳过换图),SettingsView +1(兜底图空态文案)+ mock 补 `isFallback`,Lightbox/GalleryView spec 文件级收藏单例复位。根目录 129 项 + tools 72 项全过,typecheck + `npm run build` 通过。
 

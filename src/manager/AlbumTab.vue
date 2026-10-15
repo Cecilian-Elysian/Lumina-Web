@@ -21,6 +21,8 @@ const staticAlbums = ref<AlbumsDoc>({ _meta: [] });
 const lsAlbums = reactive<Record<string, string | null>>({});
 const albumSearch = ref('');
 const draggingUrl = ref<string | null>(null);
+/** 本次点击前是否发生过拖拽(用于区分"拖完"和"真点击") */
+let didDrag = false;
 
 function readLs(): Record<string, string | null> {
   try { return JSON.parse(localStorage.getItem(LS_ALBUM_KEY) || '{}'); }
@@ -183,6 +185,7 @@ onMounted(async () => {
 });
 
 function onDragStart(e: DragEvent, url: string) {
+  didDrag = true;
   draggingUrl.value = url;
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move';
@@ -193,6 +196,12 @@ function onDragStart(e: DragEvent, url: string) {
 
 function onDragEnd() {
   draggingUrl.value = null;
+}
+
+/** 拖拽结束后浏览器仍会派发 click;dragstart 只在真正拖动时触发,用它挡掉误触 */
+function onTileClick(url: string) {
+  if (didDrag) { didDrag = false; return; }
+  openInNewTab(url);
 }
 
 function openInNewTab(url: string) {
@@ -270,6 +279,8 @@ function openInNewTab(url: string) {
         :class="{ 'is-dirty': mergedAlbumId(img.url) != null && img.url in lsAlbums, 'is-dragging': draggingUrl === img.url }"
         draggable="true"
         :data-url="img.url"
+        title="点击看大图,拖动可归类"
+        @click="onTileClick(img.url)"
         @dragstart="onDragStart($event, img.url)"
         @dragend="onDragEnd"
       >
@@ -279,12 +290,14 @@ function openInNewTab(url: string) {
           title="解除归属"
           @click.stop="assign(img.url, null)"
         >✕</button>
-        <img
-          :src="img.url"
-          alt=""
-          loading="lazy"
-          @click="openInNewTab(img.url)"
-        >
+        <div class="album-frame">
+          <img
+            :src="img.thumb || img.url"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          >
+        </div>
         <div class="album-tile-body">
           <div class="album-tile-name" :title="img.url">{{ fileName(img.url) }}</div>
           <div

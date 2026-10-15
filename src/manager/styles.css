@@ -228,12 +228,14 @@ html, body {
   white-space: nowrap;
 }
 
-/* ─── 网格 (焦点) ─────────────────────────── */
+/* ─── 网格 (焦点)— Windows 图标视图 ─────────── */
 .grid {
+  --icon: 120px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-  padding: 22px 24px 28px;
+  grid-template-columns: repeat(auto-fill, var(--icon));
+  justify-content: start;
+  gap: 10px 8px;
+  padding: 20px 22px 28px;
 }
 .empty {
   grid-column: 1 / -1;
@@ -243,43 +245,60 @@ html, body {
   font-size: 0.95rem;
 }
 .tile {
-  position: relative;
-  border-radius: var(--card-radius);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  background: var(--glass);
-  border: 1px solid var(--border);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: var(--card-shadow);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease;
 }
-.tile:hover {
-  transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+.tile:hover { background: rgba(255, 255, 255, 0.07); }
+
+/* 正方形图框:两种视图模式共用,差别只在里面的 img 如何缩放 */
+.tile-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
 }
-.tile img {
+.tile-frame img {
   display: block;
-  width: 100%; height: 160px;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+/* 裁剪预览:填满方框,按焦点定位(能看到脸有没有被切) */
+.grid.is-crop .tile-frame img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: var(--tile-x, 50%) var(--tile-y, 25%);
 }
+/* 完整图:整张缩放后居中,四周留白,不裁剪 */
+.grid.is-full .tile-frame img { object-fit: contain; }
+
 .tile-badge {
-  position: absolute; top: 8px; left: 8px;
-  width: 22px; height: 22px;
+  position: absolute; top: 3px; left: 3px; z-index: 1;
+  width: 18px; height: 18px;
   background: rgba(20, 24, 32, 0.8);
   color: #fff;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.62rem;
   backdrop-filter: blur(6px);
 }
 .tile-badge-static { background: linear-gradient(135deg, #4a90e2, #6c63ff); }
 .tile-badge-empty { background: rgba(70, 76, 90, 0.7); opacity: 0.75; }
 .tile-name {
-  padding: 8px 11px;
-  font-size: 0.75rem; color: var(--text-sub);
+  padding: 5px 2px 1px;
+  font-size: 0.72rem; color: var(--text-sub);
+  text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -624,45 +643,58 @@ html, body {
   white-space: nowrap;
 }
 
-/* ─── 图集网格 ───────────────────────────── */
+/* ─── 图集网格 — Windows 图标视图 ─────────── */
 .album-grid {
+  --icon: 132px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 14px;
-  padding: 16px 24px 6px;
+  grid-template-columns: repeat(auto-fill, var(--icon));
+  justify-content: start;
+  gap: 10px 6px;
+  padding: 16px 22px 6px;
 }
+/* 标签页每格下方要放标签 chips + 输入框,格子得宽一些 */
+.album-grid.tag-grid { --icon: 184px; }
 
 .album-tile {
   position: relative;
-  border-radius: var(--card-radius);
-  overflow: hidden;
-  background: var(--glass);
-  border: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  padding: 3px;
+  border-radius: 6px;
+  background: transparent;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: var(--card-shadow);
   cursor: grab;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease;
   user-select: none;
 }
 .album-tile:active { cursor: grabbing; }
-.album-tile:hover {
-  transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
-}
-.album-tile.is-dirty { border-color: var(--primary); }
+.album-tile:hover { background: rgba(255, 255, 255, 0.07); }
 .album-tile.is-dragging { opacity: 0.4; }
-.album-tile img {
-  display: block;
+/* 卡片边框已去掉,"待保存"改用 outline 提示(与标签页一致) */
+.album-tile.is-dirty { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+.album-frame {
+  position: relative;
   width: 100%;
-  height: 140px;
-  object-fit: cover;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.25);
+}
+.album-frame img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   pointer-events: none;
 }
 .album-tile-body {
-  padding: 8px 11px;
+  padding: 6px 3px 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -836,11 +868,7 @@ html, body {
 .upload-foot { padding-top: 2px; }
 
 /* ─── 标签 Tab ───────────────────────────── */
-.tag-tile.is-dirty {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-
+/* "待保存"高亮已由通用的 .album-tile.is-dirty 提供 */
 .tag-chips {
   display: flex;
   flex-wrap: wrap;
@@ -979,14 +1007,13 @@ html, body {
   .side-foot .btn { width: auto; }
   .bar { flex-direction: column; align-items: stretch; gap: 10px; }
   .btn { padding: 8px 13px; font-size: 0.8rem; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-  .tile img { height: 120px; }
+  .grid { --icon: 92px; }
   .modal-body { width: 95vw; padding: 18px; }
   .ctrl-preview { width: 80px; }
   .album-panel { position: static; margin: 14px 14px 0; }
   .album-toolbar, .album-grid { padding-left: 14px; padding-right: 14px; }
-  .album-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-  .album-tile img { height: 100px; }
+  .album-grid { --icon: 108px; }
+  .album-grid.tag-grid { --icon: 156px; }
   .config-row { grid-template-columns: 1fr; gap: 4px; }
   .status { margin: 14px 14px 0; }
   .upload-board { left: 12px !important; right: 12px; width: auto; }

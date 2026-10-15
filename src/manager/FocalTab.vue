@@ -6,6 +6,7 @@ import {
   useManagerState, loadFocalPoints, saveFocalPoints, loadImages,
   runAi, toast,
 } from './api';
+import type { MImage } from './api';
 import { registerSaver, setDirty } from './queue';
 import { confirmAsync } from './confirm';
 
@@ -51,11 +52,27 @@ async function fetchImages() {
   toast(`已加载 ${list.length} 张图片`, 'success');
 }
 
+/* ── 网格视图模式:裁剪+焦点 / 完整图 ── */
+const LS_VIEW_KEY = 'lumina.focal.viewmode';
+type ViewMode = 'crop' | 'full';
+
+function readView(): ViewMode {
+  try { return localStorage.getItem(LS_VIEW_KEY) === 'full' ? 'full' : 'crop'; }
+  catch { return 'crop'; }
+}
+
+const viewMode = ref<ViewMode>(readView());
+
+function toggleView() {
+  viewMode.value = viewMode.value === 'crop' ? 'full' : 'crop';
+  try { localStorage.setItem(LS_VIEW_KEY, viewMode.value); } catch { /* 隐私模式 */ }
+}
+
 /* ── 单图编辑器 ── */
-const editing = ref<{ url: string; name: string } | null>(null);
+const editing = ref<MImage | null>(null);
 const editingInitial = ref<FocalPoint | null>(null);
 
-function openEditor(img: { url: string; name: string }) {
+function openEditor(img: MImage) {
   editing.value = img;
   editingInitial.value = mergedPoint(img.url);
 }
@@ -184,6 +201,11 @@ onUnmounted(() => {
   <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
   <Teleport to="#bar-right">
     <button class="btn" @click="fetchImages">↻ 读取图片列表</button>
+    <button
+      class="btn"
+      :title="viewMode === 'crop' ? '当前:裁剪预览(能看到焦点落在哪、脸有没有被切)。点击切换成完整图。' : '当前:完整图。点击切换成裁剪预览。'"
+      @click="toggleView"
+    >{{ viewMode === 'crop' ? '✂️ 裁剪预览' : '🖼 完整图' }}</button>
     <button class="btn btn-primary" @click="startAi">🧠 AI 批量分析</button>
     <button class="btn btn-ghost" @click="openExport">📋 导出 JSON</button>
   </Teleport>
@@ -218,7 +240,7 @@ onUnmounted(() => {
   </section>
 
   <!-- 焦点网格 -->
-  <main class="grid tab-pane">
+  <main class="grid tab-pane" :class="viewMode === 'crop' ? 'is-crop' : 'is-full'">
     <div v-if="!state.imagesLoaded.value" class="empty">点击右上"读取图片列表"开始</div>
     <div
       v-for="(img, i) in state.images.value"
@@ -226,21 +248,24 @@ onUnmounted(() => {
       class="tile"
       @click="openEditor(img)"
     >
-      <span
-        class="tile-badge"
-        :class="mergedPoint(img.url) ? 'tile-badge-static' : 'tile-badge-empty'"
-        :title="mergedPoint(img.url) ? '已设焦点' : '未设'"
-      >{{ mergedPoint(img.url) ? '●' : '○' }}</span>
-      <img
-        :src="img.url"
-        :alt="img.name"
-        :style="(() => {
-          const p = mergedPoint(img.url);
-          return p ? { '--tile-x': (p.x*100).toFixed(1)+'%', '--tile-y': (p.y*100).toFixed(1)+'%' } : {};
-        })()"
-        loading="lazy"
-      >
-      <div class="tile-name">{{ img.name || ('#' + (i + 1)) }}</div>
+      <div class="tile-frame">
+        <span
+          class="tile-badge"
+          :class="mergedPoint(img.url) ? 'tile-badge-static' : 'tile-badge-empty'"
+          :title="mergedPoint(img.url) ? '已设焦点' : '未设'"
+        >{{ mergedPoint(img.url) ? '●' : '○' }}</span>
+        <img
+          :src="img.thumb || img.url"
+          :alt="img.name"
+          :style="(() => {
+            const p = mergedPoint(img.url);
+            return p ? { '--tile-x': (p.x*100).toFixed(1)+'%', '--tile-y': (p.y*100).toFixed(1)+'%' } : {};
+          })()"
+          loading="lazy"
+          decoding="async"
+        >
+      </div>
+      <div class="tile-name" :title="img.name">{{ img.name || ('#' + (i + 1)) }}</div>
     </div>
   </main>
 
