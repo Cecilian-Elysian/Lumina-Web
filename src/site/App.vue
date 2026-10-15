@@ -19,22 +19,14 @@ type ViewKey = keyof typeof views;
 
 const currentView = computed(() => views[(view as ViewKey) in views ? (view as ViewKey) : 'notfound']);
 
+/* 收藏区块已在设置页内(id="favs"),不再单列导航项,避免两个入口指向同一页 */
 const navItems = [
   { href: 'index.html', key: 'home', text: '主页' },
   { href: 'gallery.html', key: 'gallery', text: '图集' },
-  { href: 'settings.html#favs', key: 'favs', text: '收藏' },
   { href: 'settings.html', key: 'settings', text: '设置' },
 ] as const;
 
-/** 设置页按 hash 细分高亮:settings.html#favs → 「收藏」亮;否则「设置」亮 */
-const onFavsHash = window.location.hash === '#favs';
-
 function isActive(key: (typeof navItems)[number]['key']): boolean {
-  if (view === 'settings') {
-    if (key === 'favs') return onFavsHash;
-    if (key === 'settings') return !onFavsHash;
-    return false;
-  }
   return view === key;
 }
 
