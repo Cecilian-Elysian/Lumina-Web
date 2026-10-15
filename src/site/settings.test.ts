@@ -3,7 +3,7 @@ import { nextTick } from 'vue';
 import {
   defaultSettings, defaultSaver, loadSettings, saveSettings, applySettings,
   resetSettings, useSettings,
-  ROWS_RANGE, WIDTH_RANGE, SPEED_RANGE,
+  ROWS_RANGE, WIDTH_RANGE, SPEED_RANGE, ROTATE_RANGE,
 } from './settings';
 import type { SiteSettings } from './settings';
 import { CONFIG } from './config';
@@ -27,6 +27,8 @@ describe('settings 默认值', () => {
     expect(d.speed).toBe(1);
     expect(d.animate).toBe(true);
     expect(d.theme).toBe('dark');
+    expect(d.autoRotate).toBe(true);
+    expect(d.rotateSec).toBe(45);
   });
 });
 
@@ -54,6 +56,8 @@ describe('loadSettings 校验', () => {
       cardWidth: WIDTH_RANGE.min,
       speed: SPEED_RANGE.max,
       animate: true, // 非法类型回默认
+      autoRotate: true, // 非法类型回默认
+      rotateSec: 45, // 缺失补默认
       theme: 'dark', // 非法主题回默认
       screensaver: defaultSaver(),
     });
@@ -129,6 +133,32 @@ describe('theme 主题', () => {
   it('LS 预置 light 正确读出', () => {
     localStorage.setItem(LS_KEY, JSON.stringify({ theme: 'light' }));
     expect(loadSettings().theme).toBe('light');
+  });
+});
+
+describe('内容轮换设置', () => {
+  it('默认:autoRotate 开 / 45 秒', () => {
+    expect(defaultSettings().autoRotate).toBe(true);
+    expect(defaultSettings().rotateSec).toBe(45);
+  });
+
+  it('rotateSec 越界 clamp + 非法 autoRotate 回默认', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ rotateSec: 1, autoRotate: 'yes' }));
+    const s = loadSettings();
+    expect(s.rotateSec).toBe(ROTATE_RANGE.min);
+    expect(s.autoRotate).toBe(true);
+
+    localStorage.setItem(LS_KEY, JSON.stringify({ rotateSec: 9999, autoRotate: false }));
+    const s2 = loadSettings();
+    expect(s2.rotateSec).toBe(ROTATE_RANGE.max);
+    expect(s2.autoRotate).toBe(false);
+  });
+
+  it('save → load 保留轮换设置', () => {
+    const s: SiteSettings = { ...defaultSettings(), autoRotate: false, rotateSec: 90 };
+    saveSettings(s);
+    expect(loadSettings().autoRotate).toBe(false);
+    expect(loadSettings().rotateSec).toBe(90);
   });
 });
 

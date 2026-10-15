@@ -20,8 +20,7 @@
  *  16. 动画开关(html[data-anim='off'])
  *  17. 响应式补充(设置页 / masonry)
  * 18. 收藏(灯箱 ⭐ / 瀑布流角标 / 设置页「我的收藏」区块)
- * 19. 屏保模式遮罩(双层交叉淡入 + Ken Burns)
- * 20. 开屏动画(每会话首次进主页,品牌光环 + 真实进度条)
+ *  19. 屏保模式遮罩(双层交叉淡入 + Ken Burns)
  * ============================================================ */
 
 /* ============ 1. CSS 变量 ============ */
@@ -314,6 +313,14 @@ body {
   animation: lumina-scroll 40s linear infinite;
 }
 
+/* 内容轮换:整墙按行错峰淡出,在不可见时替换内容,再淡入 */
+.wall.swapping .row-track {
+  opacity: 0;
+  /* 淡出期间不可命中:opacity:0 不会禁用指针事件,
+     否则会点到不可见的旧卡片(池顺序可能已重洗) */
+  pointer-events: none;
+}
+
 .row-track .card { margin-right: var(--row-gap); }
 
 @keyframes lumina-scroll {
@@ -335,6 +342,14 @@ body {
 .card {
   flex: 0 0 var(--card-w, 300px);
   cursor: pointer;
+  /* 占位底挂在 .card 上而不是 img:
+     img 加载态是 opacity:0,会把自身的 background 一起藏掉,
+     挂在父级才能在图片到达前显示灰色相框 */
+  background: var(--img-bg);
+  border-radius: var(--card-radius);
+  /* 不加 overflow:hidden —— 悬停时 img 上移 6px 会被裁掉 */
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.35s ease;
 }
 
 .card img {
@@ -342,21 +357,22 @@ body {
   width: 100%;
   height: var(--card-height);
   object-fit: cover;
+  border-radius: var(--card-radius);
   /* 焦点位置: 模板 :style 注入 --focal-x/y(键=原图 url),
      无数据时回退居中偏上(适合多数人像构图) */
   object-position: var(--focal-x, 50%) var(--focal-y, 25%);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  transition: transform 0.35s ease, box-shadow 0.35s ease, opacity 0.4s ease;
-  background: var(--img-bg); /* 加载中占位底,避免白闪 */
+  transition: transform 0.35s ease, opacity 0.4s ease;
 
-  /* 加载态: 占位期间半透明,加载完成淡入 */
+  /* 加载态: 未就绪时透明,灰色占位底由 .card 透出;就绪后淡入 */
   opacity: 0;
 }
 .card img.is-loaded { opacity: 1; }
 
 .card:hover img {
   transform: translateY(-6px);
+}
+/* 阴影已移到 .card(占位底需要),悬停阴影跟着卡片走 */
+.card:hover {
   box-shadow: var(--hover-shadow);
 }
 
@@ -1266,130 +1282,3 @@ html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
   .ss-layer { transition: none; }
   .ss-layer.kenburns { animation: none; }
 }
-
-/* ============ 20. 开屏动画(每会话首次进主页) ============ */
-.splash {
-  position: fixed;
-  inset: 0;
-  z-index: 300; /* 盖过屏保(200)/灯箱(100)/导航(50) */
-  display: grid;
-  place-items: center;
-  background: linear-gradient(165deg, var(--bg-start), var(--bg-end));
-}
-
-.splash-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* 品牌渐变旋转光环 + 中心字标(借鉴 Cecilian-Hub SplashScreen) */
-.splash-halo {
-  position: relative;
-  width: 96px;
-  height: 96px;
-  margin-bottom: 32px;
-}
-.splash-ring {
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  background: conic-gradient(from 0deg,
-    var(--brand-1), var(--brand-2), var(--brand-deep), var(--brand-1));
-  opacity: 0.65;
-  filter: blur(3px);
-  animation: splash-spin 4s linear infinite;
-}
-.splash-core {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--bg-end);
-  box-shadow: var(--card-shadow);
-  font-size: 40px;
-  font-weight: 800;
-  color: var(--brand-1);
-  user-select: none;
-}
-
-.splash-title {
-  margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: 0.2em;
-  color: var(--text-main);
-  text-shadow: var(--title-shadow);
-}
-
-.splash-sub {
-  margin: 0 0 44px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5em;
-  color: var(--text-sub);
-}
-
-/* 细进度条:宽度由内联 style 绑真实进度(已就绪/总数);
- * 列表未到时挂 is-idle,用爬动动画占位(CSS 动画优先于内联 width) */
-.splash-bar {
-  position: relative;
-  width: 160px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--border);
-  overflow: hidden;
-}
-.splash-bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  border-radius: 2px;
-  background: var(--brand-1);
-  box-shadow: 0 0 12px var(--brand-1);
-  transition: width 0.3s ease;
-}
-.splash-bar-fill.is-idle {
-  animation: splash-crawl 1.1s ease-in-out infinite alternate;
-}
-
-@keyframes splash-spin {
-  to { transform: rotate(360deg); }
-}
-@keyframes splash-crawl {
-  from { width: 8%; }
-  to   { width: 32%; }
-}
-
-/* 退出:模糊 + 放大 + 淡出 */
-.splash-leave-active {
-  transition: opacity 0.8s ease, transform 0.8s ease, filter 0.8s ease;
-}
-.splash-leave-to {
-  opacity: 0;
-  transform: scale(1.08);
-  filter: blur(18px);
-}
-
-/* 轻量进度提示:开屏已播过、图片仍在加载时显示(替代整片空白) */
-.wall-progress {
-  text-align: center;
-  color: var(--text-sub);
-  padding: 8px 0 0;
-  font-size: 0.85rem;
-  letter-spacing: 0.3em;
-}
-
-/* 开屏动画的无障碍与动画开关:只留静态骨架 + 即时退场 */
-@media (prefers-reduced-motion: reduce) {
-  .splash-ring,
-  .splash-bar-fill.is-idle { animation: none; }
-  .splash-bar-fill { transition: none; }
-  .splash-leave-active { transition: none; }
-}
-html[data-anim='off'] .splash-ring,
-html[data-anim='off'] .splash-bar-fill.is-idle { animation: none; }
-html[data-anim='off'] .splash-leave-active { transition: none; }

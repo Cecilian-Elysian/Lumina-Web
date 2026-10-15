@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   useSettings, resetSettings,
   ROWS_RANGE, WIDTH_RANGE, SPEED_RANGE,
-  IDLE_CHOICES, INTERVAL_CHOICES,
+  IDLE_CHOICES, INTERVAL_CHOICES, ROTATE_CHOICES,
 } from './settings';
 import { useFavorites } from './favorites';
 import { useScreensaver } from './screensaver';
@@ -179,6 +179,37 @@ onUnmounted(() => {
           >浅色</button>
         </div>
         <output class="setting-value">{{ settings.theme === 'light' ? '浅色' : '深色' }}</output>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label" id="set-rotate-label">内容轮换</span>
+        <button
+          type="button"
+          class="toggle"
+          :class="{ on: settings.autoRotate }"
+          role="switch"
+          :aria-checked="settings.autoRotate ? 'true' : 'false'"
+          aria-labelledby="set-rotate-label"
+          @click="settings.autoRotate = !settings.autoRotate"
+        />
+        <output class="setting-value">{{ settings.autoRotate ? '开' : '关' }}</output>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label" id="set-rotate-sec-label">轮换间隔</span>
+        <div class="view-switch wrap" role="group" aria-labelledby="set-rotate-sec-label">
+          <button
+            v-for="s in ROTATE_CHOICES"
+            :key="s"
+            type="button"
+            :class="{ active: settings.rotateSec === s }"
+            :disabled="!settings.autoRotate"
+            @click="settings.rotateSec = s"
+          >{{ s }} 秒</button>
+        </div>
+        <output class="setting-value">
+          {{ settings.autoRotate ? settings.rotateSec + ' 秒' : '关' }}
+        </output>
       </div>
     </section>
 

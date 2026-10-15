@@ -47,6 +47,10 @@ export interface SiteSettings {
   speed: number;
   /** 滚动动画开关 */
   animate: boolean;
+  /** 图片墙内容自动轮换开关(定时换掉一批图 + 重排) */
+  autoRotate: boolean;
+  /** 轮换间隔秒(15–180) */
+  rotateSec: number;
   /** 屏保模式子设置 */
   screensaver: ScreenSaverPrefs;
 }
@@ -58,10 +62,13 @@ export const WIDTH_RANGE = { min: 180, max: 560 } as const;
 export const SPEED_RANGE = { min: 0.25, max: 3 } as const;
 export const SAVER_IDLE_RANGE = { min: 0, max: 30 } as const;
 export const SAVER_INTERVAL_RANGE = { min: 3, max: 120 } as const;
+export const ROTATE_RANGE = { min: 15, max: 180 } as const;
 
 /** 设置页分段按钮候选值(单位:分钟 / 秒;0 = 闲置自动关闭) */
 export const IDLE_CHOICES = [0, 1, 3, 5, 10] as const;
 export const INTERVAL_CHOICES = [5, 10, 20, 40] as const;
+/** 图片墙轮换间隔候选值(秒) */
+export const ROTATE_CHOICES = [20, 30, 45, 60, 90] as const;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -86,6 +93,8 @@ export function defaultSettings(): SiteSettings {
     cardWidth: clamp(Math.round(toNum(CONFIG.cardWidth, 300)), WIDTH_RANGE.min, WIDTH_RANGE.max),
     speed: 1,
     animate: true,
+    autoRotate: true,
+    rotateSec: 45,
     screensaver: defaultSaver(),
   };
 }
@@ -120,6 +129,8 @@ export function loadSettings(): SiteSettings {
     cardWidth: clamp(Math.round(toNum(o.cardWidth, def.cardWidth)), WIDTH_RANGE.min, WIDTH_RANGE.max),
     speed: clamp(toNum(o.speed, def.speed), SPEED_RANGE.min, SPEED_RANGE.max),
     animate: typeof o.animate === 'boolean' ? o.animate : def.animate,
+    autoRotate: typeof o.autoRotate === 'boolean' ? o.autoRotate : def.autoRotate,
+    rotateSec: clamp(Math.round(toNum(o.rotateSec, def.rotateSec)), ROTATE_RANGE.min, ROTATE_RANGE.max),
     screensaver: loadSaver(o.screensaver),
   };
 }
