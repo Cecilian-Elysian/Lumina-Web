@@ -41,7 +41,7 @@ onMounted(() => {
 
 <template>
   <header class="navbar">
-    <div><h1 class="navbar-title">Lumina-Web</h1></div>
+    <div><h1 class="navbar-title">Illusium Wall</h1></div>
     <nav class="navbar-nav" aria-label="主导航">
       <a
         v-for="item in navItems"
