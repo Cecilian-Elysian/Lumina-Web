@@ -80,7 +80,8 @@ describe('validateConfigPatch', () => {
     expect(() => validateConfigPatch({ rows: 11 })).toThrow(/范围/);
     expect(() => validateConfigPatch({ cardWidth: 100 })).toThrow(/范围/);
     expect(() => validateConfigPatch({ cardWidth: 601 })).toThrow(/范围/);
-    expect(() => validateConfigPatch({ perPage: 201 })).toThrow(/范围/);
+    expect(() => validateConfigPatch({ perPage: 501 })).toThrow(/范围/);
+    expect(() => validateConfigPatch({ perPage: 500 })).not.toThrow();
   });
 
   // 边界值必须与 src/site/settings.ts 的 ROWS_RANGE / WIDTH_RANGE 对齐:

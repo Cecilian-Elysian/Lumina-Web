@@ -17,7 +17,7 @@ import { registerSaver, setDirty } from './queue';
 const form = reactive({
   rows: 3,
   cardWidth: 300,
-  perPage: 100,
+  perPage: 500,
   thumbWidth: '' as string,   // 空串 = null
 });
 /** 服务器端当前快照(dirty 对比基准) */
@@ -52,7 +52,7 @@ const validationError = computed(() => {
   const p = currentPatch();
   if (!Number.isInteger(p.rows) || p.rows! < 1 || p.rows! > 6) return '行数必须是 1–6 的整数';
   if (!Number.isInteger(p.cardWidth) || p.cardWidth! < 180 || p.cardWidth! > 560) return '卡片宽度必须是 180–560 的整数';
-  if (!Number.isInteger(p.perPage) || p.perPage! < 1 || p.perPage! > 200) return '拉取上限必须是 1–200 的整数';
+  if (!Number.isInteger(p.perPage) || p.perPage! < 1 || p.perPage! > 500) return '拉取上限必须是 1–500 的整数';
   if (p.thumbWidth != null && (!Number.isInteger(p.thumbWidth) || p.thumbWidth < 100 || p.thumbWidth > 2000)) {
     return '缩略图宽度必须是 100–2000 的整数或留空';
   }
@@ -127,8 +127,8 @@ onMounted(reload);
 
         <label class="config-row">
           <span class="config-label">拉取上限 (张)</span>
-          <input v-model.number="form.perPage" type="number" min="1" max="200" step="1">
-          <span class="config-hint">1–200,代理分页合并后的返回上限</span>
+          <input v-model.number="form.perPage" type="number" min="1" max="500" step="1">
+          <span class="config-hint">1–500,最多拿多少张(图片墙靠轮换展示全部,不靠这个数)</span>
         </label>
 
         <label class="config-row">

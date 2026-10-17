@@ -11,27 +11,36 @@ import { describe, it, expect } from 'vitest';
 import { onRequest as visitHandler } from '../../functions/api/visit.js';
 import { onRequest as likesHandler } from '../../functions/api/likes.js';
 
-/** 按 SQL 前缀分发的迷你 D1 mock */
+/** 按 SQL 前缀分发的迷你 D1 mock
+ *
+ *  ⚠ 真实的 UV 增量语义由 tools/test/visit-sql.test.mjs 用【真 SQLite】验证;
+ *    这里只需忠实复刻到足以验证 visit.js 的控制流与 likes.js 的原子增减。
+ *  ⚠ `(SELECT changes())` 的语义 mock 不了(那是本轮唯一必须靠真引擎验证的地方)。
+ */
 function createMockD1() {
   const visitors = new Map(); // `${day}|${vid}` → true
   const stats = new Map(); // day → { pv, uv }
   const likes = new Map(); // url → count
+  /** 模拟 SQLite 的 changes():上一条语句改动的行数 */
+  let lastChanges = 0;
 
   function exec(sql, params = []) {
     const s = sql.replace(/\s+/g, ' ').trim();
 
     if (s.startsWith('INSERT INTO visitors')) {
       const key = `${params[0]}|${params[1]}`;
-      if (visitors.has(key)) return { meta: { changes: 0 } };
-      visitors.set(key, true);
-      return { meta: { changes: 1 } };
+      lastChanges = visitors.has(key) ? 0 : 1;
+      if (lastChanges) visitors.set(key, true);
+      return { meta: { changes: lastChanges } };
     }
     if (s.startsWith('INSERT INTO daily_stats')) {
-      const [day, uvInc] = params;
-      const cur = stats.get(day) || { pv: 0, uv: 0 };
+      const cur = stats.get(params[0]) || { pv: 0, uv: 0 };
       cur.pv += 1;
-      cur.uv += uvInc;
-      stats.set(day, cur);
+      // 两种调用形状:
+      //   .bind(day)      → 生产路径,UV 增量取上一条语句的 changes()
+      //   .bind(day, 1, uv) → 测试直接预置数据,UV 用最后一个参数
+      cur.uv += params.length >= 2 ? Number(params[params.length - 1]) : lastChanges;
+      stats.set(params[0], cur);
       return { meta: { changes: 1 } };
     }
     if (s.startsWith('SELECT COALESCE(SUM(pv)')) {
@@ -128,6 +137,19 @@ describe('functions/api/visit', () => {
     const totals = await (await visitHandler({ request: visitRequest('GET'), env })).json();
     expect(totals.data.pv).toBe(0);
     expect(totals.data.uv).toBe(0);
+  });
+
+  it('爬虫响应带真实累计(否则前端会把页脚统计清零成「0 次照亮」)', async () => {
+    const env = { DB: createMockD1() };
+    await visitOnce(env, '5.5.5.5'); // 先攒一点数据
+    const res = await visitHandler({
+      request: visitRequest('POST', { ip: '9.9.9.9', ua: 'Googlebot/2.1' }),
+      env,
+    });
+    const json = await res.json();
+    expect(json.data.skipped).toBe(true);
+    expect(json.data.pv).toBe(1);   // 不是 0
+    expect(json.data.today.pv).toBe(1);
   });
 
   it('GET 返回累计与今日(多日聚合)', async () => {

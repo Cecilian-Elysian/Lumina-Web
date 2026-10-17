@@ -39,7 +39,13 @@ async function recordVisit(request, env) {
   if (!db) return json(200, { status: false, message: '未绑定 D1 数据库', data: {} });
 
   const ua = request.headers.get('User-Agent') || '';
-  if (BOT_UA_RE.test(ua)) return json(200, { status: true, data: { skipped: true } });
+  // 机器人也返回真实累计:前端拿到 {skipped:true} 时若也照单全收,
+  // 会把页脚统计清零显示成「0 次照亮 · 0 位旅人」。这里多查一次 D1 换正确显示。
+  if (BOT_UA_RE.test(ua)) {
+    const t = await totals(env);
+    const payload = await t.json();
+    return json(200, { status: true, data: Object.assign({ skipped: true }, payload.data) });
+  }
 
   // UTC 日期(与 sha256 里的 day 同源,跨日边界一致性优先于本地时区)
   const day = new Date().toISOString().slice(0, 10);
@@ -47,21 +53,22 @@ async function recordVisit(request, env) {
   const vid = await sha256hex(ip + '\n' + ua + '\n' + day);
 
   try {
-    // 1) 今日指纹首次出现 → changes=1 → UV +1,否则只加 PV
-    const inserted = await db
-      .prepare('INSERT INTO visitors (day, vid) VALUES (?1, ?2) ON CONFLICT (day, vid) DO NOTHING')
-      .bind(day, vid)
-      .run();
-    const isNew = (inserted.meta && inserted.meta.changes) === 1;
-
-    // 2) 聚合表 upsert:PV 恒 +1,UV 仅新访客 +1
-    await db
-      .prepare(
-        'INSERT INTO daily_stats (day, pv, uv) VALUES (?1, 1, ?2) ' +
-        'ON CONFLICT (day) DO UPDATE SET pv = pv + 1, uv = uv + ?2'
-      )
-      .bind(day, isNew ? 1 : 0)
-      .run();
+    // 一次 db.batch 完成「写指纹 + 更新聚合计数」:
+    //   - batch 是事务,任一语句失败整批回滚。原实现是 3 次独立往返,
+    //     中间失败会留下「指纹已写入但计数没加」的状态 —— 该访客当天
+    //     永远不会再被算作新访客,UV 永久丢失。
+    //   - UV 增量用 changes() 取上一条语句的行数(changes() 在本语句
+    //     的 VALUES 求值阶段执行,读到的是上一条语句的结果)。
+    //     excluded.uv 是本行「本该插入」的值,供 ON CONFLICT 分支复用。
+    //     此语义已用真 SQLite(node:sqlite)验证,见 tools/test/visit-sql.test.mjs。
+    await db.batch([
+      db.prepare('INSERT INTO visitors (day, vid) VALUES (?1, ?2) ON CONFLICT (day, vid) DO NOTHING')
+        .bind(day, vid),
+      db.prepare(
+        'INSERT INTO daily_stats (day, pv, uv) VALUES (?1, 1, (SELECT changes())) ' +
+        'ON CONFLICT (day) DO UPDATE SET pv = daily_stats.pv + 1, uv = daily_stats.uv + excluded.uv'
+      ).bind(day),
+    ]);
 
     return totals(env);
   } catch (err) {
