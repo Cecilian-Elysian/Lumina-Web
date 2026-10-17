@@ -284,9 +284,15 @@ async function main() {
         failed++;
         return;
       }
-      const detections = await faceapi.detectAllFaces(decoded,
-        new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }));
-      decoded.dispose();
+      let detections;
+      try {
+        detections = await faceapi.detectAllFaces(decoded,
+          new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }));
+      } finally {
+        // 解码张量必须无条件释放:detect 抛错时不释放的话,
+        // 长批量跑下来内存只增不减,最后 OOM
+        decoded.dispose();
+      }
 
       if (detections.length === 0) {
         analyzed++;

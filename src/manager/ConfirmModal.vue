@@ -7,7 +7,8 @@ const { state, settle } = useConfirmState();
 function onKeydown(e: KeyboardEvent) {
   if (!state.open) return;
   if (e.key === 'Escape') settle(false);
-  else if (e.key === 'Enter') settle(true);
+  // 危险操作(删除/清库类)不允许 Enter 快捷确认,防手滑
+  else if (e.key === 'Enter' && !state.danger) settle(true);
 }
 
 watch(() => state.open, (open) => {

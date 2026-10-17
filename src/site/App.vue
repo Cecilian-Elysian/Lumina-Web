@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted } from 'vue';
+import { computed, defineAsyncComponent, defineComponent, h, onMounted } from 'vue';
+import type { Component } from 'vue';
 import { useErrorBanner } from './composables';
 import { useVisit } from './visit';
 import { initScreensaver } from './screensaver';
@@ -8,13 +9,36 @@ import { formatInt } from '@/shared/utils';
 /** 入口 HTML 内联脚本注入的视图标识(home / gallery / settings / notfound) */
 const view = window.__VIEW__ || 'home';
 
+/* chunk 加载失败(弱网 / 发版瞬间旧 chunk 已被删)的可交互兜底:
+ * 自动重试两次,仍失败给出「刷新重试」按钮,而不是永远白屏 */
+const ViewLoadError = defineComponent({
+  setup() {
+    return () => h('div', { class: 'view-load-error' }, [
+      h('p', '页面加载失败,请检查网络后重试'),
+      h('button', { type: 'button', onClick: () => window.location.reload() }, '刷新重试'),
+    ]);
+  },
+});
+
 /* 视图按需加载:四个页面共用一个入口,静态 import 会让 404.html(只有两行字)
  * 也下载并执行全站代码。异步组件把它拆成独立 chunk,各页只下自己那份。 */
+function lazyView(loader: () => Promise<Component>) {
+  return defineAsyncComponent({
+    loader,
+    delay: 150,
+    errorComponent: ViewLoadError,
+    onError(_error, retry, fail, attempts) {
+      if (attempts <= 2) retry();
+      else fail();
+    },
+  });
+}
+
 const views = {
-  home: defineAsyncComponent(() => import('./HomeView.vue')),
-  gallery: defineAsyncComponent(() => import('./GalleryView.vue')),
-  settings: defineAsyncComponent(() => import('./SettingsView.vue')),
-  notfound: defineAsyncComponent(() => import('./NotFoundView.vue')),
+  home: lazyView(() => import('./HomeView.vue')),
+  gallery: lazyView(() => import('./GalleryView.vue')),
+  settings: lazyView(() => import('./SettingsView.vue')),
+  notfound: lazyView(() => import('./NotFoundView.vue')),
 } as const;
 type ViewKey = keyof typeof views;
 

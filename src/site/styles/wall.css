@@ -43,7 +43,8 @@
    而任一时刻可见的只有十来个。 */
 .row-track .card {
   content-visibility: auto;
-  contain-intrinsic-size: 300px 230px;
+  /* 宽度跟随 --card-w(设置页可改 180–560),写死 300px 时估算尺寸会失真 */
+  contain-intrinsic-size: var(--card-w, 300px) 230px;
 }
 
 .wall.ready .row-track {

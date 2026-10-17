@@ -9,7 +9,7 @@ const imgs = [
 ];
 
 vi.mock('@/shared/apiClient', () => ({
-  loadImages: vi.fn(async () => ({ images: imgs, error: null })),
+  loadImages: vi.fn(async () => ({ images: imgs })),
 }));
 
 /* 屏保/设置都是模块级单例 → 单例用例用 resetModules 取全新实例;
@@ -136,7 +136,7 @@ describe('useScreensaver — 边界与竞态', () => {
   it('图片列表为空 → 不激活', async () => {
     const [{ showScreensaver, useScreensaver }] = await freshModules();
     const { loadImages } = await import('@/shared/apiClient');
-    vi.mocked(loadImages).mockResolvedValueOnce({ images: [], error: null });
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: [] });
 
     await showScreensaver();
     expect(useScreensaver().active.value).toBe(false);
@@ -147,7 +147,7 @@ describe('useScreensaver — 边界与竞态', () => {
     const [{ showScreensaver, useScreensaver }, { useSettings, defaultSettings, defaultSaver }] =
       await freshModules();
     const { loadImages } = await import('@/shared/apiClient');
-    vi.mocked(loadImages).mockResolvedValueOnce({ images: [imgs[0], imgs[1]], error: null });
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: [imgs[0], imgs[1]] });
     const { settings } = useSettings();
     settings.value = {
       ...defaultSettings(),
@@ -173,14 +173,14 @@ describe('useScreensaver — 边界与竞态', () => {
   it('hide 使在途 show 作废(加载完成前退出 → 不激活)', async () => {
     const [{ showScreensaver, hideScreensaver, useScreensaver }] = await freshModules();
     const { loadImages } = await import('@/shared/apiClient');
-    let resolveLoad!: (v: { images: typeof imgs; error: null }) => void;
+    let resolveLoad!: (v: { images: typeof imgs }) => void;
     vi.mocked(loadImages).mockImplementationOnce(
       () => new Promise((resolve) => { resolveLoad = resolve; }),
     );
 
     const pending = showScreensaver(); // 挂在图片加载上
     hideScreensaver();                 // 加载完成前退出
-    resolveLoad({ images: imgs, error: null });
+    resolveLoad({ images: imgs });
     await pending;
 
     expect(useScreensaver().active.value).toBe(false);

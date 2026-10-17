@@ -84,10 +84,7 @@ export function useLikes() {
 
     const wasLiked = state.liked.value.has(url);
     const delta = wasLiked ? -1 : 1;
-    const before = {
-      liked: new Set(state.liked.value),
-      likes: { ...state.likes.value },
-    };
+    const likesBefore = { ...state.likes.value };
 
     // 1) 乐观更新 + LS 持久化
     const likedNext = new Set(state.liked.value);
@@ -118,10 +115,19 @@ export function useLikes() {
         }
       })
       .catch((err) => {
-        // 3) 回滚 + 提示
-        state.liked.value = before.liked;
-        state.likes.value = before.likes;
-        writeLiked(before.liked);
+        // 3) 只回滚本 url 的两处状态。整表快照回滚会把在途期间
+        //    其它 url 刚完成的乐观/权威更新一并冲掉。
+        const likedCur = new Set(state.liked.value);
+        if (wasLiked) likedCur.add(url);
+        else likedCur.delete(url);
+        state.liked.value = likedCur;
+        writeLiked(likedCur);
+
+        const likesCur = { ...state.likes.value };
+        if (url in likesBefore) likesCur[url] = likesBefore[url];
+        else delete likesCur[url];
+        state.likes.value = likesCur;
+
         console.warn('[Lumina] 点赞失败已回滚:', err);
         useErrorBanner().showBanner('点赞失败，请稍后再试');
       })

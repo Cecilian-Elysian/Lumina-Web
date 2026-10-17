@@ -318,6 +318,8 @@ interface ActiveDrag {
   dragging: boolean;
   samples: MoveSample[];
   period: number;
+  /** 距上一帧累计的位移,由 rAF 统一落到 dragX(见 onRowMove) */
+  pendingDx: number;
 }
 let active: ActiveDrag | null = null;
 /** 拖拽后抑制紧随其后的合成 click(误开灯箱) */
@@ -390,8 +392,21 @@ function onRowDown(r: number, e: PointerEvent) {
     dragging: false,
     samples: [{ x: e.clientX, t: performance.now() }],
     period: 0,
+    pendingDx: 0,
   };
   addHeld(r);
+}
+
+/** 高采样率鼠标/触屏的 pointermove 可达每秒数百次,每次都写 dragX 就是
+ *  每秒几百次组件级重渲。改为只累计位移,拖拽渲染合并到每帧一次。 */
+let dragRaf: number | null = null;
+
+function applyDragFrame() {
+  dragRaf = null;
+  if (!active || !active.dragging || active.pendingDx === 0) return;
+  const dx = active.pendingDx;
+  active.pendingDx = 0;
+  setDragX(active.row, normalizeOffset((dragX.value[active.row] ?? 0) + dx, active.period));
 }
 
 function onRowMove(e: PointerEvent) {
@@ -409,8 +424,9 @@ function onRowMove(e: PointerEvent) {
   active.samples.push({ x: e.clientX, t: now });
   if (active.samples.length > 8) active.samples.shift();
 
-  setDragX(active.row, normalizeOffset((dragX.value[active.row] ?? 0) + (e.clientX - active.lastX), active.period));
+  active.pendingDx += e.clientX - active.lastX;
   active.lastX = e.clientX;
+  if (dragRaf == null) dragRaf = requestAnimationFrame(applyDragFrame);
 }
 
 function onRowUp(e: PointerEvent) {
@@ -421,6 +437,12 @@ function onRowUp(e: PointerEvent) {
 
   const dist = Math.hypot(e.clientX - active.startX, e.clientY - active.startY);
   const dur = performance.now() - active.startT;
+
+  // 松手前把还没落到帧上的剩余位移补齐,否则惯性从旧位置起跳会回跳一小段
+  if (active.pendingDx !== 0) {
+    setDragX(active.row, normalizeOffset((dragX.value[active.row] ?? 0) + active.pendingDx, active.period));
+    active.pendingDx = 0;
+  }
 
   if (active.dragging) {
     justDragged = true;
@@ -533,8 +555,16 @@ const onResize = debounce(() => {
 }, 300);
 
 function onVisibilityChange() {
+  if (document.hidden) return;
+  // 后台期间 rAF 停摆,滞留的加载登记回前台立刻冲一次(不等下一帧),
+  // 否则「后台打开、切回前台」时墙面可能多等一拍才算就绪
+  if (loadedFlushRaf != null) {
+    cancelAnimationFrame(loadedFlushRaf);
+    loadedFlushRaf = null;
+  }
+  flushLoaded();
   // 回到前台时重置轮换计时(后台不计时),并刷新下一窗预热
-  if (!document.hidden) scheduleRotate();
+  scheduleRotate();
 }
 
 /** 系统「减少动态效果」开关变化 → 立刻停/启轮换 */
@@ -614,6 +644,7 @@ onUnmounted(() => {
   if (pendingOpenTimer) clearTimeout(pendingOpenTimer);
   if (rotateTimer) { clearTimeout(rotateTimer); rotateTimer = null; }
   if (rafId != null) cancelAnimationFrame(rafId);
+  if (dragRaf != null) cancelAnimationFrame(dragRaf);
   if (loadedFlushRaf != null) { cancelAnimationFrame(loadedFlushRaf); loadedFlushRaf = null; }
   pendingLoaded.clear();
 });

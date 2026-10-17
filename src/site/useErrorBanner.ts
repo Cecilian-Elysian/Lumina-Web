@@ -22,22 +22,33 @@ const bannerState = {
 };
 
 let bannerTimer: ReturnType<typeof setTimeout> | null = null;
+let bannerFadeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function showBanner(msg: string) {
   // 已 dismiss(本浏览器)→ 跳过,避免每次重试都弹
   if (readDismissed()[msg]) return;
 
+  // 内外两个计时器都要清:否则淡出窗口内再次弹出/手动关闭时,
+  // 残留的内层计时器会把刚显示的新横幅瞬间隐藏
+  if (bannerTimer) clearTimeout(bannerTimer);
+  if (bannerFadeTimer) { clearTimeout(bannerFadeTimer); bannerFadeTimer = null; }
   bannerState.msg.value = msg;
   bannerState.fading.value = false;
   bannerState.visible.value = true;
-  if (bannerTimer) clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => {
+    bannerTimer = null;
     bannerState.fading.value = true;
-    setTimeout(() => { bannerState.visible.value = false; }, 400);
+    bannerFadeTimer = setTimeout(() => {
+      bannerFadeTimer = null;
+      bannerState.visible.value = false;
+      bannerState.fading.value = false;
+    }, 400);
   }, 3000);
 }
 
 function dismissBanner() {
+  if (bannerTimer) { clearTimeout(bannerTimer); bannerTimer = null; }
+  if (bannerFadeTimer) { clearTimeout(bannerFadeTimer); bannerFadeTimer = null; }
   bannerState.visible.value = false;
   bannerState.fading.value = false;
   try {
@@ -46,7 +57,6 @@ function dismissBanner() {
     dismissed[bannerState.msg.value] = true;
     localStorage.setItem(BANNER_LS_KEY, JSON.stringify(dismissed));
   } catch {}
-  if (bannerTimer) { clearTimeout(bannerTimer); bannerTimer = null; }
 }
 
 export function useErrorBanner() {

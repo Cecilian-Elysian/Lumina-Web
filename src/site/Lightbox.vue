@@ -51,6 +51,13 @@ const currentFaved = computed(() => {
   return url ? isFav(url) : false;
 });
 
+/** 下载/新开目标只认 http(s):url 来自上游 API,
+ *  javascript: 之类的伪协议在这里会变成可点击的注入点 */
+const safeUrl = computed(() => {
+  const u = current.value?.url || '';
+  return /^https?:\/\//i.test(u) ? u : '';
+});
+
 function onFav() {
   const url = current.value?.url;
   if (url) toggleFav(url);
@@ -275,12 +282,12 @@ onUnmounted(() => {
     <button class="lb-btn lb-close" aria-label="关闭预览" title="关闭 (Esc)" @click="close">×</button>
     <a
       class="lb-btn lb-download"
-      :href="current?.url"
+      :href="safeUrl || undefined"
       download
       target="_blank"
       rel="noopener"
       aria-label="下载原图"
-      title="下载原图"
+      title="下载原始图片"
     >↓</a>
     <button
       class="lb-btn lb-fav"

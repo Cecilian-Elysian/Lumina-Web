@@ -84,7 +84,24 @@ body {
   flex-direction: column;
 }
 
-.hidden { display: none; }
+/* 视图 chunk 加载失败的兜底(App.vue 的 errorComponent) */
+.view-load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 80px 20px;
+  color: var(--text-dim, #8a8fa3);
+}
+.view-load-error button {
+  padding: 8px 22px;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.view-load-error button:hover { opacity: 0.8; }
 
 /* ============ 导航栏 / 页脚 / 错误横条 ============ */
 .navbar {

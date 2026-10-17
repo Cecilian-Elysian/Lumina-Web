@@ -207,7 +207,7 @@ function onTileClick(url: string) {
 }
 
 function openInNewTab(url: string) {
-  window.open(url, '_blank');
+  window.open(url, '_blank', 'noopener');
 }
 </script>
 

@@ -87,8 +87,8 @@ function buildDirectHeaders(): Record<string, string> {
   return headers;
 }
 
-/** loadImages 的返回(永不 reject) */
-type LoadResult = { images: Image[]; error: string | null };
+/** loadImages 的返回(永不 reject;失败已静默回退兜底图) */
+type LoadResult = { images: Image[] };
 
 /** 列表内存缓存 TTL:窗口内 SPA 换页/开屏保复用同一份名单,不重复回源 */
 const LIST_TTL_MS = 60_000;
@@ -97,14 +97,14 @@ let listCache: { at: number; data: LoadResult } | null = null;
 let inflight: Promise<LoadResult> | null = null;
 
 /**
- * 拉取图片列表。永不 reject:上游失败时回退兜底图并返回错误信息。
+ * 拉取图片列表。永不 reject:上游失败时静默回退兜底图(细节只进 console)。
  * 60s 内存缓存 + 并发去重;仅缓存成功且非兜底的结果(失败下次自动重试)。
- * @returns { images, error? }
+ * @returns { images }
  */
 export async function loadImages(): Promise<LoadResult> {
   // 显式关闭图床 API → 直接走兜底,不发起任何网络请求
   if (CONFIG.apiDisabled) {
-    return { images: toFallbackImages(CONFIG.fallbackImages), error: null };
+    return { images: toFallbackImages(CONFIG.fallbackImages) };
   }
 
   if (listCache && Date.now() - listCache.at < LIST_TTL_MS) {
@@ -130,7 +130,7 @@ async function fetchList(): Promise<LoadResult> {
     headers = { Accept: 'application/json' };
   } else {
     if (!CONFIG.apiBase || !CONFIG.token) {
-      return { images: toFallbackImages(CONFIG.fallbackImages), error: null };
+      return { images: toFallbackImages(CONFIG.fallbackImages) };
     }
     url = CONFIG.apiBase + CONFIG.listPath + '?order=newest&per_page=' + CONFIG.perPage;
     headers = buildDirectHeaders();
@@ -153,12 +153,12 @@ async function fetchList(): Promise<LoadResult> {
     if (images.length === 0) {
       throw new Error('图片 URL 字段 "' + CONFIG.imgUrlField + '" 未命中');
     }
-    return { images, error: null };
+    return { images };
   } catch (err) {
     // 静默回退:fallback 是预期行为,不打扰用户
     // 调试信息仅打到 console(DevTools 可见),不弹 banner
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[Lumina] 图床加载失败:', msg, '→ 已回退兜底图。');
-    return { images: toFallbackImages(CONFIG.fallbackImages), error: null };
+    return { images: toFallbackImages(CONFIG.fallbackImages) };
   }
 }

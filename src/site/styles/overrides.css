@@ -38,7 +38,8 @@
   .gallery-card-meta { padding: 12px 14px; }
   .gallery-card-title { font-size: 0.95rem; }
 
-  .lb-btn { width: 40px; height: 40px; }
+  /* 排除点赞胶囊(变宽),固定 40px 会把计数挤没 */
+  .lb-btn:not(.lb-like) { width: 40px; height: 40px; }
   .lb-prev { left: 10px; }
   .lb-next { right: 10px; }
 }

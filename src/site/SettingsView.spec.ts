@@ -13,7 +13,7 @@ const imgs: Image[] = [
 vi.mock('@/shared/apiClient', async () => {
   const { CONFIG } = await import('@/site/config');
   return {
-    loadImages: vi.fn(async () => ({ images: imgs, error: null })),
+    loadImages: vi.fn(async () => ({ images: imgs })),
     /* 与真实实现同逻辑:列表恰好等于 CONFIG.fallbackImages 即视为回退态 */
     isFallback: (list: Image[]) => {
       const fb = CONFIG.fallbackImages;
@@ -84,7 +84,7 @@ describe('SettingsView 我的收藏', () => {
     const fbImgs: Image[] = CONFIG.fallbackImages.map((u) => ({
       url: u, name: '', thumb: u,
     }));
-    vi.mocked(loadImages).mockResolvedValueOnce({ images: fbImgs, error: null });
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: fbImgs });
 
     const wrapper = await mountView();
     expect(wrapper.text()).toContain('图片列表加载失败');

@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script>try{if(JSON.parse(localStorage.getItem("lumina.settings")||"{}").theme==="light")document.documentElement.dataset.theme="light"}catch(e){}</script>
   <meta name="theme-color" content="#14161a">
-  <link rel="preconnect" href="https://7bu.top" crossorigin>
+  <!-- 图片走普通 <img> 非 CORS 加载:preconnect 带 crossorigin 会建另一条
+       TLS 连接池,等于白连;不带才是同一条连接 -->
+  <link rel="preconnect" href="https://7bu.top">
   <link rel="dns-prefetch" href="https://bu.dusays.com">
   <meta name="description" content="流动图片墙 — 多行叠层水平流动的图片展示墙">
   <title>流动图片墙 · Illusium Wall</title>

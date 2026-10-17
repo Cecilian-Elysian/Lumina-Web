@@ -64,10 +64,13 @@ const filteredImages = computed(() => {
     tagsOf(img.url).some((t) => t.toLowerCase().includes(q)));
 });
 
-/** 卡片展示的 top-N 标签(按频次) */
-function cardTags(albumImages: string[]): string[] {
-  return albumTags(albumImages).slice(0, 6);
-}
+/** 卡片展示的 top-N 标签(按频次)。预计算成 Map:模板里原本对每个图集
+ *  调两次 cardTags(v-if + v-for),即 2N 次全图集标签聚合。 */
+const cardTagMap = computed(() => {
+  const m = new Map<number, string[]>();
+  filtered.value.forEach((a, i) => m.set(i, albumTags(a.images).slice(0, 6)));
+  return m;
+});
 
 const resultText = computed(() => {
   const q = query.value.trim();
@@ -200,9 +203,9 @@ onMounted(async () => {
           <span class="gallery-card-title">{{ album.name }}</span>
           <span class="gallery-card-count">{{ album.count }}</span>
         </div>
-        <div v-if="cardTags(album.images).length" class="gallery-card-tags">
+        <div v-if="cardTagMap.get(i)?.length" class="gallery-card-tags">
           <button
-            v-for="tag in cardTags(album.images)"
+            v-for="tag in cardTagMap.get(i)"
             :key="tag"
             type="button"
             class="tag-chip"
