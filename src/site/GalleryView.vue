@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { loadImages } from '@/shared/apiClient';
 import type { Image } from '@/shared/types';
 import { useAlbums, useTags, useFocal, useLightbox } from './composables';
@@ -95,13 +95,31 @@ function onTagClick(tag: string) {
   query.value = tag;
 }
 
+/** 封面/瀑布流缩略图的已加载集合。
+ *  ⚠ 同样按帧合并:一次瀑布流可达上百张,逐张改响应式 Set
+ *    会让整个瀑布流(含 isFav / likeCount 等每卡多次响应式读)反复重渲染。 */
+const pendingCovers = new Set<string>();
+let coverFlushRaf: number | null = null;
+
 function onCoverLoad(cover: string) {
-  if (!loadedCovers.value.has(cover)) {
-    const next = new Set(loadedCovers.value);
-    next.add(cover);
-    loadedCovers.value = next;
-  }
+  if (loadedCovers.value.has(cover) || pendingCovers.has(cover)) return;
+  pendingCovers.add(cover);
+  if (coverFlushRaf == null) coverFlushRaf = requestAnimationFrame(flushCovers);
 }
+
+function flushCovers() {
+  coverFlushRaf = null;
+  if (pendingCovers.size === 0) return;
+  const next = new Set(loadedCovers.value);
+  for (const c of pendingCovers) next.add(c);
+  pendingCovers.clear();
+  loadedCovers.value = next;
+}
+
+onUnmounted(() => {
+  if (coverFlushRaf != null) { cancelAnimationFrame(coverFlushRaf); coverFlushRaf = null; }
+  pendingCovers.clear();
+});
 
 function onCardKeydown(e: KeyboardEvent, index: number) {
   if (e.key !== 'Enter' && e.key !== ' ') return;

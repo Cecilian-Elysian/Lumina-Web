@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import HomeView from './HomeView.vue';
-import GalleryView from './GalleryView.vue';
-import NotFoundView from './NotFoundView.vue';
-import SettingsView from './SettingsView.vue';
-import Lightbox from './Lightbox.vue';
-import ScreensaverOverlay from './ScreensaverOverlay.vue';
+import { computed, defineAsyncComponent, onMounted } from 'vue';
 import { useErrorBanner } from './composables';
 import { useVisit } from './visit';
 import { initScreensaver } from './screensaver';
@@ -14,10 +8,19 @@ import { formatInt } from '@/shared/utils';
 /** 入口 HTML 内联脚本注入的视图标识(home / gallery / settings / notfound) */
 const view = window.__VIEW__ || 'home';
 
-const views = { home: HomeView, gallery: GalleryView, settings: SettingsView, notfound: NotFoundView } as const;
+/* 视图按需加载:四个页面共用一个入口,静态 import 会让 404.html(只有两行字)
+ * 也下载并执行全站代码。异步组件把它拆成独立 chunk,各页只下自己那份。 */
+const views = {
+  home: defineAsyncComponent(() => import('./HomeView.vue')),
+  gallery: defineAsyncComponent(() => import('./GalleryView.vue')),
+  settings: defineAsyncComponent(() => import('./SettingsView.vue')),
+  notfound: defineAsyncComponent(() => import('./NotFoundView.vue')),
+} as const;
 type ViewKey = keyof typeof views;
 
 const currentView = computed(() => views[(view as ViewKey) in views ? (view as ViewKey) : 'notfound']);
+
+/* 灯箱与屏保是全站常驻层(任意页面都能唤起),保持静态引入 */
 
 /* 收藏区块已在设置页内(id="favs"),不再单列导航项,避免两个入口指向同一页 */
 const navItems = [

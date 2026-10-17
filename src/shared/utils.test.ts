@@ -32,6 +32,25 @@ describe('debounce', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(n).toBe(1);
   });
+
+  it('flush 立即执行挂起调用,空挂起时不动', () => {
+    const calls: number[] = [];
+    const fn = debounce((v: number) => { calls.push(v); }, 5000);
+    fn(1); fn(2);
+    fn.flush();
+    expect(calls).toEqual([2]); // 只有最后一次的参数
+    fn.flush(); // 无挂起,不重复执行
+    expect(calls).toEqual([2]);
+  });
+
+  it('cancel 丢弃挂起调用', async () => {
+    let n = 0;
+    const fn = debounce(() => { n++; }, 10);
+    fn();
+    fn.cancel();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(n).toBe(0);
+  });
 });
 
 describe('clamp01', () => {

@@ -117,14 +117,25 @@ export function useAlbums(images: () => Image[]) {
  * ============================================================ */
 const LS_TAGS_KEY = 'lumina.tags.local';
 
+/** readTagOverrides 的单条缓存:键是 LS 原始字符串。
+ *  tagsOf 在渲染路径上被高频调用(图集页搜索每敲一个字,
+ *  全部过滤后卡片的标签都要重查一遍 ≈ 上百次),每次 getItem + JSON.parse
+ *  纯属浪费。应用内没有该键的写入者(只有 DevTools 手动改,需刷新生效),
+ *  以原始串做键既能命中,也能在外部被改动时自动失效。 */
+let tagOverridesCache: { raw: string; data: Record<string, string[] | null> } | null = null;
+
 function readTagOverrides(): Record<string, string[] | null> {
+  const raw = localStorage.getItem(LS_TAGS_KEY) || '';
+  if (tagOverridesCache?.raw === raw) return tagOverridesCache.data;
+  let data: Record<string, string[] | null> = {};
   try {
-    const o: unknown = JSON.parse(localStorage.getItem(LS_TAGS_KEY) || '{}');
-    if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
-    return o as Record<string, string[] | null>;
+    const o: unknown = JSON.parse(raw || '{}');
+    if (o && typeof o === 'object' && !Array.isArray(o)) data = o as Record<string, string[] | null>;
   } catch {
-    return {};
+    /* 解析失败保持 {} */
   }
+  tagOverridesCache = { raw, data };
+  return data;
 }
 
 /** 单图标签,非法项过滤 */

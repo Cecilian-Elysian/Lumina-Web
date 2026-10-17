@@ -81,8 +81,6 @@ const allLoaded = ref(false);
 const swapping = ref(false);
 /** 已就绪(加载成功或失败)的图片,控制淡入(键 = img.url) */
 const loadedUrls = ref(new Set<string>());
-/** 2x 原图 404 时回退 1x 缩略图(键 = img.url) */
-const fallbackThumb = ref(new Set<string>());
 
 /* ---- 触屏手动状态 ---- */
 /** 每行手动位移 px(外层 .row-drag 的 translateX) */
@@ -185,13 +183,13 @@ const preloadImage = (url: string, markKey: string) => {
 };
 
 /**
- * 高分屏(srcset 的 2x 候选是原图)预热原图,否则预热缩略图 —
- * 与浏览器实际请求的候选保持一致,否则预热纯属浪费。
- * 登记键统一用 img.url,与模板 loadedUrls.has(img.url) 对齐。
+ * 预热下一批要挂上墙的缩略图。
+ * 只预热 thumb:模板也只请求 thumb(apiClient 不再产出 srcset 的 2x 原图
+ * 候选),预热原图纯属浪费带宽。登记键统一用 img.url,与模板
+ * loadedUrls.has(img.url) 对齐。
  */
 function preloadItems(items: RowItem[]): void {
-  const use2x = typeof window !== 'undefined' && window.devicePixelRatio >= 2;
-  for (const it of items) preloadImage(use2x ? it.img.url : it.img.thumb, it.img.url);
+  for (const it of items) preloadImage(it.img.thumb, it.img.url);
 }
 
 /** 错峰淡出 → 不可见时替换内容 → 淡入(轨道 DOM 保留,滚动相位连续) */
@@ -268,22 +266,37 @@ function forceReady() {
   scheduleRotate();
 }
 
-/** 登记某 url 已就绪(加载成功或失败都算,控制淡入) */
+/** 登记某 url 已就绪(加载成功或失败都算,控制淡入)
+ *
+ *  ⚠ 加载事件逐张到达,而 HomeView 是单一组件、单一渲染函数(覆盖全部行与卡片):
+ *    每张图都直接改响应式 Set 就会整页重渲染一次 —— 60 张 = 60 次,
+ *    每次重建全部 vnode(约 240 个)并重算全部样式绑定。
+ *    这里攒进非响应式集合,到下一帧一次性提交,60 次降为 1 次。 */
+const pendingLoaded = new Set<string>();
+let loadedFlushRaf: number | null = null;
+
 function markLoaded(url: string) {
-  if (loadedUrls.value.has(url)) return;
+  if (loadedUrls.value.has(url) || pendingLoaded.has(url)) return;
+  pendingLoaded.add(url);
+  if (loadedFlushRaf == null) loadedFlushRaf = requestAnimationFrame(flushLoaded);
+}
+
+function flushLoaded() {
+  loadedFlushRaf = null;
+  if (disposed || pendingLoaded.size === 0) return;
   const next = new Set(loadedUrls.value);
-  next.add(url);
+  for (const u of pendingLoaded) next.add(u);
+  pendingLoaded.clear();
   loadedUrls.value = next;
-  if (total.value > 0 && loadedUrls.value.size >= total.value) forceReady();
+  if (total.value > 0 && next.size >= total.value) forceReady();
 }
 
 function onImgDone(img: Image) {
   markLoaded(img.url);
 }
 
+/** 缩略图加载失败:计数上仍算「已就绪」,否则墙面会永远卡在加载态 */
 function onImgError(img: Image) {
-  // Retina 屏选了 2x 原图失败 → 清 srcset,回退 thumb(只试一次,防循环)
-  fallbackThumb.value.add(img.url);
   onImgDone(img);
 }
 
@@ -340,11 +353,25 @@ const flingV: number[] = [];
 let rafId: number | null = null;
 let lastFrameT = 0;
 
-/** 轨道一份内容宽(scrollWidth 为双份) */
+/** 轨道一份内容宽的缓存(scrollWidth 是双份)。
+ *
+ *  ⚠ scrollWidth 读取会强制同步重排,绝不能放进 flingFrame 这类
+ *    每帧循环(最多 6 行 × 60 帧 = 每秒 360 次强制布局)。
+ *    这里改成:内容或尺寸变化后把缓存清空,下次用到时量一次并落缓存。 */
+const rowPeriods: number[] = [];
+
 function rowPeriod(r: number): number {
+  const cached = rowPeriods[r];
+  if (cached) return cached;
   const track = rowEls[r]?.querySelector('.row-track');
   const w = track instanceof HTMLElement ? track.scrollWidth : 0;
-  return w / 2;
+  rowPeriods[r] = w / 2;
+  return rowPeriods[r];
+}
+
+/** 内容/尺寸变化后作废缓存(下次读取会重新量) */
+function invalidateRowPeriods(): void {
+  rowPeriods.length = 0;
 }
 
 function setDragX(r: number, x: number) {
@@ -511,6 +538,9 @@ watch(() => settings.value.cardWidth, () => onResize());
 
 /** 视口变化:仅当窗口需「变宽补卡」时重建(避免循环露白);防抖 */
 const onResize = debounce(() => {
+  // 卡片宽变了 → 轨道宽度必然变了 → 必须作废缓存,
+  // 否则下面即使不换班也会继续用旧周期做惯性折返(位移对不上画面)
+  invalidateRowPeriods();
   const n = gallery.value.length;
   // 换班中忽略本次 resize,避免与轮换并发两次换班
   if (disposed || n === 0 || swapping.value) return;
@@ -559,6 +589,7 @@ function resetTouchState() {
   flingV.fill(0);
   heldRows.value = new Set();
   pausedRows.value = new Set();
+  invalidateRowPeriods();
   if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
 }
 
@@ -602,6 +633,8 @@ onUnmounted(() => {
   if (pendingOpenTimer) clearTimeout(pendingOpenTimer);
   if (rotateTimer) { clearTimeout(rotateTimer); rotateTimer = null; }
   if (rafId != null) cancelAnimationFrame(rafId);
+  if (loadedFlushRaf != null) { cancelAnimationFrame(loadedFlushRaf); loadedFlushRaf = null; }
+  pendingLoaded.clear();
 });
 </script>
 
@@ -638,7 +671,6 @@ onUnmounted(() => {
           >
             <img
               :src="item.img.thumb"
-              :srcset="fallbackThumb.has(item.img.url) ? undefined : item.img.srcset"
               :alt="item.img.name || '图片'"
               :style="focalStyle(item.img.url)"
               :class="{ 'is-loaded': loadedUrls.has(item.img.url) }"

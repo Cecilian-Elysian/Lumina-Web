@@ -5,9 +5,9 @@ import type { Image } from '@/shared/types';
 
 /* ── mock 图片列表 ── */
 const imgs: Image[] = [
-  { url: 'https://a/1.jpg', thumb: 'https://t/1.jpg', name: 'one', srcset: '' },
-  { url: 'https://a/2.jpg', thumb: 'https://t/2.jpg', name: 'two', srcset: '' },
-  { url: 'https://a/3.jpg', thumb: 'https://t/3.jpg', name: 'three', srcset: '' },
+  { url: 'https://a/1.jpg', thumb: 'https://t/1.jpg', name: 'one' },
+  { url: 'https://a/2.jpg', thumb: 'https://t/2.jpg', name: 'two' },
+  { url: 'https://a/3.jpg', thumb: 'https://t/3.jpg', name: 'three' },
 ];
 
 vi.mock('@/shared/apiClient', async () => {
@@ -27,7 +27,7 @@ import SettingsView from './SettingsView.vue';
 import { useLightbox } from './composables';
 import { useScreensaver } from './screensaver';
 import { useFavorites } from './favorites';
-import { resetSettings } from './settings';
+import { flushSettingsSave, resetSettings } from './settings';
 
 const SETTINGS_KEY = 'lumina.settings';
 const FAVS_KEY = 'lumina.favs';
@@ -82,7 +82,7 @@ describe('SettingsView 我的收藏', () => {
     const { loadImages } = await import('@/shared/apiClient');
     const { CONFIG } = await import('@/site/config');
     const fbImgs: Image[] = CONFIG.fallbackImages.map((u) => ({
-      url: u, name: '', thumb: u, srcset: u + ' 1x, ' + u + ' 2x',
+      url: u, name: '', thumb: u,
     }));
     vi.mocked(loadImages).mockResolvedValueOnce({ images: fbImgs, error: null });
 
@@ -146,6 +146,7 @@ describe('SettingsView 屏保', () => {
     const fiveMin = idleGroup.findAll('button').find((b) => b.text() === '5 分')!;
     await fiveMin.trigger('click');
     await nextTick();
+    flushSettingsSave(); // 持久化有 250ms 防抖,测试里直接冲刷
 
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     expect(saved.screensaver.idleMin).toBe(5);

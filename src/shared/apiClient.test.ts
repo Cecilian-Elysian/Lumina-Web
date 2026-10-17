@@ -3,7 +3,7 @@ import { mapImage, toFallbackImages, isFallback, rewriteThumb } from './apiClien
 import { CONFIG } from '@/site/config';
 
 describe('mapImage', () => {
-  it('按 CONFIG 字段路径映射 url/thumb/name/srcset', () => {
+  it('按 CONFIG 字段路径映射 url/thumb/name', () => {
     const item = {
       origin_name: 'a.png',
       links: {
@@ -15,7 +15,16 @@ describe('mapImage', () => {
     expect(img.url).toBe('https://bu.dusays.com/x/a.png');
     expect(img.thumb).toBe('https://7bu.top/thumbnails/a.png');
     expect(img.name).toBe('a.png');
-    expect(img.srcset).toBe('https://7bu.top/thumbnails/a.png 1x, https://bu.dusays.com/x/a.png 2x');
+  });
+
+  // 回归:曾经把原图 url 当 srcset 的 2x 候选,导致高清屏首屏下载全部原图,
+  // 且频繁加载失败。thumbWidth(600) 恰好等于 300px 卡片在 2x 屏上的需求。
+  it('不产出 srcset —— 避免高清屏去拉原图', () => {
+    const img = mapImage({
+      origin_name: 'a.png',
+      links: { url: 'https://bu.dusays.com/x/a.png', thumbnail_url: 'https://7bu.top/thumbnails/a.png' },
+    });
+    expect('srcset' in img).toBe(false);
   });
 
   it('thumb 字段缺失时回退 url', () => {
@@ -30,7 +39,7 @@ describe('toFallbackImages / isFallback', () => {
     const imgs = toFallbackImages(CONFIG.fallbackImages.slice(0, 3));
     expect(imgs[0].thumb).toBe(imgs[0].url);
     expect(isFallback(imgs)).toBe(true);
-    expect(isFallback([{ url: 'https://other/9.jpg', name: '', thumb: '', srcset: '' }])).toBe(false);
+    expect(isFallback([{ url: 'https://other/9.jpg', name: '', thumb: '' }])).toBe(false);
   });
 });
 

@@ -2,9 +2,10 @@
  * 共享类型 — site 与 manager 通用的数据契约
  * ------------------------------------------------------------
  * ★ 关键约定:
- *   FOCAL_POINTS / ALBUMS 的键永远是 Image.url(原图直链),
- *   不是 thumb。历史上曾用 thumb 查表导致焦点全部失效,
- *   迁移 TS 后由类型系统约束此约定。
+ *   FOCAL_POINTS / ALBUMS / TAGS 的键永远是 Image.url(原图直链),
+ *   不是 thumb。历史上曾用 thumb 查表导致焦点全部失效。
+ *   ⚠ 这条约定只能靠约定维持:下面几个类型都是索引签名
+ *     (Record<string, …>),类型系统无法区分键是 url 还是 thumb。
  * ============================================================ */
 
 /** 单张图片(apiClient 产出的统一格式) */
@@ -15,8 +16,6 @@ export interface Image {
   thumb: string;
   /** 原始文件名,可为空串 */
   name: string;
-  /** `${thumb} 1x, ${url} 2x`,供 Retina 屏 */
-  srcset: string;
 }
 
 /** 焦点归一化坐标(0=左/上, 1=右/下) */

@@ -44,7 +44,15 @@ export function rewriteThumb(thumb: string): string {
   return thumb;
 }
 
-/** 把图床接口数组元素映射为统一的 Image 格式(字段路径来自 CONFIG) */
+/** 把图床接口数组元素映射为统一的 Image 格式(字段路径来自 CONFIG)
+ *
+ *  ★ 只回 thumb,不生成 srcset 的 2x 原图候选。
+ *    卡片宽 CONFIG.cardWidth(默认 300)CSS px,2x 屏需要 600px,
+ *    而 thumb 本身就是 thumbWidth(600)px —— 尺寸刚好够用。
+ *    曾经把原图 url 当 2x 候选,等于让高清屏首屏下载每张的原图
+ *    (原图常 2000–4000px,是所需像素的十几倍),还频繁加载失败。
+ *    原图只在灯箱/屏保用,那里直接引 url。
+ */
 export function mapImage(item: RawItem): Image {
   const url = String(getByPath(item, CONFIG.imgUrlField) ?? '');
   const rawThumb = String(
@@ -52,12 +60,12 @@ export function mapImage(item: RawItem): Image {
   );
   const thumb = rewriteThumb(rawThumb);
   const name = String((CONFIG.imgNameField && getByPath(item, CONFIG.imgNameField)) || '');
-  return { url, name, thumb, srcset: `${thumb} 1x, ${url} 2x` };
+  return { url, name, thumb };
 }
 
 /** fallback 图片包装成统一 Image(url 与 thumb 相同,焦点/图集查表可命中) */
 export function toFallbackImages(urls: string[]): Image[] {
-  return urls.map((u) => ({ url: u, name: '', thumb: u, srcset: `${u} 1x, ${u} 2x` }));
+  return urls.map((u) => ({ url: u, name: '', thumb: u }));
 }
 
 /** 是否使用兜底图(proxy 不可达时供调用方判断,避免图集页误判) */

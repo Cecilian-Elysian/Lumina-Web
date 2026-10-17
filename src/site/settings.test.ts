@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { nextTick } from 'vue';
 import {
   defaultSettings, defaultSaver, loadSettings, saveSettings, applySettings,
-  resetSettings, useSettings,
+  resetSettings, useSettings, flushSettingsSave,
   ROWS_RANGE, WIDTH_RANGE, SPEED_RANGE, ROTATE_RANGE,
 } from './settings';
 import type { SiteSettings } from './settings';
@@ -169,11 +169,13 @@ describe('useSettings 单例', () => {
       ...defaultSettings(),
       theme: 'light', rows: 6, cardWidth: 560, speed: 3, animate: false,
     };
-    await nextTick(); // watch 异步 flush 后才写 LS
+    await nextTick(); // watch 异步 flush 后调度防抖保存
+    flushSettingsSave(); // 持久化有 250ms 防抖,测试里直接冲刷
     expect(loadSettings().rows).toBe(6);
 
     resetSettings();
     await nextTick();
+    flushSettingsSave();
     expect(settings.value).toEqual(defaultSettings());
     expect(loadSettings()).toEqual(defaultSettings());
   });

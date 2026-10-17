@@ -3,9 +3,9 @@ import { advancePlaylist, shuffled } from './screensaver';
 
 /* ── mock 图片列表 ── */
 const imgs = [
-  { url: 'https://a/1.jpg', thumb: 'https://t/1.jpg', name: 'one', srcset: '' },
-  { url: 'https://a/2.jpg', thumb: 'https://t/2.jpg', name: 'two', srcset: '' },
-  { url: 'https://a/3.jpg', thumb: 'https://t/3.jpg', name: 'three', srcset: '' },
+  { url: 'https://a/1.jpg', thumb: 'https://t/1.jpg', name: 'one' },
+  { url: 'https://a/2.jpg', thumb: 'https://t/2.jpg', name: 'two' },
+  { url: 'https://a/3.jpg', thumb: 'https://t/3.jpg', name: 'three' },
 ];
 
 vi.mock('@/shared/apiClient', () => ({

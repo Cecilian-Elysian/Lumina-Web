@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onUnmounted } from 'vue';
 import { useLightbox, useTags, LIGHTBOX_ZOOM } from './composables';
 import { useLikes } from './likes';
 import { useFavorites } from './favorites';
@@ -16,6 +16,19 @@ const { isFav, toggleFav } = useFavorites();
 /* 大图换图淡入:src 变化时先透明,load 后显示 */
 const imgLoaded = ref(false);
 watch(() => current.value?.url, () => { imgLoaded.value = false; });
+
+/* ---- 邻图预热:左右各 1 张 ----
+ * 灯箱加载的是原图(单张常以 MB 计),等点击切换才开始下载,
+ * 翻页就是一次空白等待。提前取相邻两张,浏览器会与后续 <img>
+ * 请求共享 HTTP 缓存,翻页基本即点即显。 */
+watch(index, (i) => {
+  const n = items.value.length;
+  if (n < 2) return;
+  for (const off of [-1, 1]) {
+    const u = items.value[(i + off + n) % n]?.url;
+    if (u) new Image().src = u;
+  }
+});
 
 /* ---- 点赞(服务端计数就绪才显示) ---- */
 const currentLiked = computed(() => {
@@ -60,8 +73,22 @@ const SWIPE_THRESHOLD = 60;
 const SWIPE_FLICK_DIST = 24;
 const SWIPE_FLICK_MS = 220;
 
+/* 滚轮缩放按帧合并:触控板滚动/捏合会以极小粒度每秒触发上百次 wheel,
+ * 逐次写 scale 就是每秒上百次组件重渲染。攒进一个非响应式累加器,
+ * 到下一帧合并成一步应用 —— zoomBy 内部按序钳制,合并前后结果完全一致。 */
+let pendingZoomStep = 0;
+let zoomRaf: number | null = null;
+
+function flushZoom() {
+  zoomRaf = null;
+  const d = pendingZoomStep;
+  pendingZoomStep = 0;
+  if (d !== 0) zoomBy(d);
+}
+
 function onWheel(e: WheelEvent) {
-  zoomBy(e.deltaY < 0 ? LIGHTBOX_ZOOM.step : -LIGHTBOX_ZOOM.step);
+  pendingZoomStep += e.deltaY < 0 ? LIGHTBOX_ZOOM.step : -LIGHTBOX_ZOOM.step;
+  if (zoomRaf == null) zoomRaf = requestAnimationFrame(flushZoom);
 }
 
 /** 手动双击后的时间戳(抑制原生 dblclick 重复触发) */
@@ -230,6 +257,10 @@ watch(isOpen, (open) => {
   if (!open) resetView();
   lockScroll(open);
 }, { immediate: true });
+onUnmounted(() => {
+  if (zoomRaf != null) { cancelAnimationFrame(zoomRaf); zoomRaf = null; }
+});
+
 </script>
 
 <template>

@@ -13,6 +13,7 @@
  *       纯组件驱动,不写 <html> 属性。
  * ============================================================ */
 import { ref, watch, watchEffect } from 'vue';
+import { debounce } from '@/shared/utils';
 import { CONFIG } from './config';
 
 export type ThemeName = 'dark' | 'light';
@@ -146,7 +147,22 @@ export function saveSettings(s: SiteSettings): void {
 /* ---- 模块级单例 + 自动持久化 ---- */
 const state = { settings: ref<SiteSettings>(loadSettings()) };
 
-watch(state.settings, (s) => saveSettings(s), { deep: true });
+/** 持久化防抖 250ms:设置页拖动滑杆时每个 input 事件都会深改一次 settings,
+ *  不防抖就是每秒几十次 JSON.stringify + localStorage 写(同步 IO,主线程卡顿)。
+ *  防抖后停手 250ms 才写一次。 */
+const saveSettingsSoon = debounce(saveSettings, 250);
+
+watch(state.settings, (s) => saveSettingsSoon(s), { deep: true });
+
+/** 立即落盘防抖中的保存。
+ *  页面隐藏/关闭时 Web 存储不保证等得到 250ms 定时器,需要抢在前面 flush。 */
+export function flushSettingsSave(): void {
+  saveSettingsSoon.flush();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushSettingsSave);
+}
 
 export function useSettings() {
   return { settings: state.settings };

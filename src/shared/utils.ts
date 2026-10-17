@@ -22,12 +22,39 @@ export function shuffle<T>(arr: T[]): T[] {
 }
 
 /** 防抖:连续触发只在最后一次 wait 毫秒后执行 */
-export function debounce<F extends (...args: never[]) => void>(fn: F, wait: number): (...args: Parameters<F>) => void {
+export interface Debounced<F extends (...args: never[]) => void> {
+  (...args: Parameters<F>): void;
+  /** 立即执行挂起的调用(无挂起则不动);执行后清空挂起状态 */
+  flush(): void;
+  /** 丢弃挂起的调用 */
+  cancel(): void;
+}
+
+export function debounce<F extends (...args: never[]) => void>(fn: F, wait: number): Debounced<F> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<F>) => {
+  let lastArgs: Parameters<F> | null = null;
+  const wrapped = ((...args: Parameters<F>) => {
+    lastArgs = args;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), wait);
+    timer = setTimeout(() => {
+      timer = null;
+      lastArgs = null;
+      fn(...args);
+    }, wait);
+  }) as Debounced<F>;
+  wrapped.flush = () => {
+    if (timer == null || lastArgs == null) return;
+    clearTimeout(timer);
+    timer = null;
+    const args = lastArgs;
+    lastArgs = null;
+    fn(...args);
   };
+  wrapped.cancel = () => {
+    if (timer != null) { clearTimeout(timer); timer = null; }
+    lastArgs = null;
+  };
+  return wrapped;
 }
 
 /** 数值夹紧到 [0,1] */
