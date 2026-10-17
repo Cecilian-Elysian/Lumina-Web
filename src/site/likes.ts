@@ -19,11 +19,6 @@ import { useErrorBanner } from './composables';
 
 const LS_LIKED_KEY = 'lumina.liked';
 
-export interface VisitLikePayload {
-  url: string;
-  count: number;
-}
-
 /* ---- 模块级单例状态 ---- */
 const state = {
   /** 全量计数 { [url]: count }(服务端权威,成功响应时覆盖) */

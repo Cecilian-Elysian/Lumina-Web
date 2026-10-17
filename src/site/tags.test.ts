@@ -59,18 +59,3 @@ describe('useTags.albumTags', () => {
     expect(albumTags([])).toEqual([]);
   });
 });
-
-describe('useTags.allTags', () => {
-  it('合并静态 + LS 独有键,去重降频', () => {
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      'https://a/9.jpg': ['新标签'],
-      'https://a/1.jpg': null, // 清空不计
-    }));
-    const { allTags } = useTags();
-    const tags = allTags();
-    expect(tags).toContain('新标签');
-    expect(tags).toContain('角色');
-    expect(tags).toContain('立绘');
-    expect(tags).toContain('风景');
-  });
-});

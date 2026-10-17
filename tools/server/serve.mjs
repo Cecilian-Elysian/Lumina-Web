@@ -88,6 +88,12 @@ const LOG_DIR = path.join(TOOLS, '.tmp');
 const LOG_FILE = path.join(LOG_DIR, 'serve.log');
 const PORT_FILE = path.join(LOG_DIR, 'port.txt');
 
+/** 统一的 JSON 响应。全站 30+ 处曾逐字抄 writeHead+end,故只此一份。 */
+function sendJson(res, status, obj) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(obj));
+}
+
 async function appendLog(text) {
   try {
     await fs.mkdir(LOG_DIR, { recursive: true });
@@ -398,8 +404,7 @@ function readBodyRaw(req, MAX) {
 async function uploadImage(req, res) {
   const MAX = 20 * 1024 * 1024;
   const fail = (status, msg) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: msg }));
+    sendJson(res, status, { ok: false, error: msg });
   };
 
   // ── 参数校验(400/413):与上游故障(502)区分 ──
@@ -454,12 +459,10 @@ async function uploadImage(req, res) {
     if (!url) throw new Error('图床返回缺少 data.links.url');
 
     log('🖼', `上传成功: ${url}`);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, data: { url, name: json?.data?.name || '' } }));
+    sendJson(res, 200, { ok: true, data: { url, name: json?.data?.name || '' } });
   } catch (e) {
     log('❌', `上传失败: ${e.message}`);
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: e.message }));
+    sendJson(res, 502, { ok: false, error: e.message });
   }
 }
 
@@ -557,8 +560,7 @@ async function handle(req, res, url) {
   if (pathname === '/api/viewer-config' && req.method === 'GET') {
     try {
       const cfg = await readViewerConfig();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
+      sendJson(res, 200, {
         ok: true,
         data: {
           mode: cfg.mode,
@@ -567,17 +569,15 @@ async function handle(req, res, url) {
           cardWidth: cfg.cardWidth,
           perPage: cfg.perPage,
           thumbWidth: cfg.thumbWidth,
-          lazyRootMargin: cfg.lazyRootMargin,
           imgField: cfg.imgField,
           imgUrlField: cfg.imgUrlField,
           imgThumbField: cfg.imgThumbField,
           imgNameField: cfg.imgNameField,
           fallbackImages: cfg.fallbackImages || [],
         },
-      }));
+      });
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 500, { ok: false, error: e.message });
     }
     return;
   }
@@ -589,11 +589,9 @@ async function handle(req, res, url) {
       validateConfigPatch(patch);
       const r = await writeConfig(patch);
       log('💾', `写回 config.ts(${r.updated.join(', ')})`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(r));
+      sendJson(res, 200, r);
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 400, { ok: false, error: e.message });
     }
     return;
   }
@@ -601,11 +599,9 @@ async function handle(req, res, url) {
   if (pathname === '/api/focal-points' && req.method === 'GET') {
     try {
       const data = await readFocalPoints();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, data }));
+      sendJson(res, 200, { ok: true, data });
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 500, { ok: false, error: e.message });
     }
     return;
   }
@@ -619,11 +615,9 @@ async function handle(req, res, url) {
       }
       const r = await writeFocalPoints(json);
       log('💾', `写入 focalPoints.ts(${r.count} 项)${r.ok ? '' : ' — ' + r.error}`);
-      res.writeHead(r.ok ? 200 : 500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(r));
+      sendJson(res, r.ok ? 200 : 500, r);
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'JSON 解析失败:' + e.message }));
+      sendJson(res, 400, { ok: false, error: 'JSON 解析失败:' + e.message });
     }
     return;
   }
@@ -632,12 +626,10 @@ async function handle(req, res, url) {
     const perPage = Number(url.searchParams.get('per_page')) || 60;
     const data = await fetchUpstreamImages(perPage);
     if (!data) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: '上游不可达,使用兜底图' }));
+      sendJson(res, 502, { ok: false, error: '上游不可达,使用兜底图' });
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, data }));
+    sendJson(res, 200, { ok: true, data });
     return;
   }
 
@@ -658,12 +650,10 @@ async function handle(req, res, url) {
       }
       const result = await syncDataFile(file);
       log('↥', `[${file}] ${result.message}`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, ...result }));
+      sendJson(res, 200, { ok: true, ...result });
     } catch (e) {
       log('❌', '同步失败: ' + e.message);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 500, { ok: false, error: e.message });
     }
     return;
   }
@@ -710,11 +700,9 @@ async function handle(req, res, url) {
   if (pathname === '/api/albums' && req.method === 'GET') {
     try {
       const data = await readAlbums();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, data }));
+      sendJson(res, 200, { ok: true, data });
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 500, { ok: false, error: e.message });
     }
     return;
   }
@@ -727,11 +715,9 @@ async function handle(req, res, url) {
       validateAlbumsDoc(doc);
       const r = await writeAlbums(doc);
       log('💾', `写入 albums.ts (meta=${r.metaCount}, images=${r.imageCount})`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, ...r }));
+      sendJson(res, 200, { ok: true, ...r });
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 400, { ok: false, error: e.message });
     }
     return;
   }
@@ -742,11 +728,9 @@ async function handle(req, res, url) {
       const { name } = JSON.parse(body);
       const r = await addAlbum(name);
       log('➕', `新建图集: ${r.name} (id=${r.id})`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(r));
+      sendJson(res, 200, r);
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 400, { ok: false, error: e.message });
     }
     return;
   }
@@ -759,11 +743,9 @@ async function handle(req, res, url) {
       if (!name) throw new Error('name 必填');
       const r = await renameAlbum(id, name);
       log('✏️ ', `重命名图集: ${id} → ${name}`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(r));
+      sendJson(res, 200, r);
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 400, { ok: false, error: e.message });
     }
     return;
   }
@@ -775,11 +757,9 @@ async function handle(req, res, url) {
       if (!id) throw new Error('id 必填');
       const r = await deleteAlbum(id);
       log('🗑️ ', `删除图集: ${id} (旗下 ${r.removedCount} 张图降级为未分组)`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(r));
+      sendJson(res, 200, r);
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 400, { ok: false, error: e.message });
     }
     return;
   }
@@ -788,11 +768,9 @@ async function handle(req, res, url) {
   if (pathname === '/api/tags' && req.method === 'GET') {
     try {
       const data = await readTags();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, data }));
+      sendJson(res, 200, { ok: true, data });
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 500, { ok: false, error: e.message });
     }
     return;
   }
@@ -804,11 +782,9 @@ async function handle(req, res, url) {
       validateTagsDoc(doc);
       const r = await writeTags(doc);
       log('💾', `写入 tags.ts (图片 ${r.imageCount} 张, 标签 ${r.tagCount} 个)`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, ...r }));
+      sendJson(res, 200, { ok: true, ...r });
     } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      sendJson(res, 400, { ok: false, error: e.message });
     }
     return;
   }

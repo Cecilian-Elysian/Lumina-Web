@@ -2,16 +2,6 @@
  * 共享工具 — 纯函数,无副作用(site 与 manager 通用)
  * ============================================================ */
 
-/** HTML 转义,防 XSS(插值场景下 Vue 模板已自动转义,此函数用于拼 title/URL 等属性的场景) */
-export function escapeHtml(s: unknown): string {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 /** 按点分路径取值,如 getByPath({a:{b:[1,2]}}, 'a.b') → [1,2];取不到返回 undefined */
 export function getByPath(obj: unknown, path: string): unknown {
   return path

@@ -54,7 +54,6 @@ export const CONFIG = {
   /* ---- 缩略图增强(实测 7bu.top 不支持改写,保持 null) ---- */
   thumbWidth: 600,
   thumbRewrite: null,
-  lazyRootMargin: '200px',
 
   /* ---- 兜底演示图(上游不可达时使用) ---- */
   fallbackImages: [

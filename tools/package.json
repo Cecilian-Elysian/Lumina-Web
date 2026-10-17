@@ -12,7 +12,6 @@
     "ai:max": "node ai/build-focal-points.mjs --strategy=max",
     "ai:center": "node ai/build-focal-points.mjs --strategy=center",
     "download": "node ai/build-focal-points.mjs --download-only",
-    "list": "node ai/analyze-images.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

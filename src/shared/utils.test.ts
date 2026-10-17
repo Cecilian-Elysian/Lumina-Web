@@ -1,15 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, getByPath, shuffle, debounce, clamp01, fileName, formatInt } from './utils';
-
-describe('escapeHtml', () => {
-  it('转义五个危险字符', () => {
-    expect(escapeHtml('<a href="x">&\'</a>')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;');
-  });
-  it('null/undefined 转空串', () => {
-    expect(escapeHtml(null)).toBe('');
-    expect(escapeHtml(undefined)).toBe('');
-  });
-});
+import { getByPath, shuffle, debounce, clamp01, fileName, formatInt } from './utils';
 
 describe('getByPath', () => {
   it('取嵌套值', () => {

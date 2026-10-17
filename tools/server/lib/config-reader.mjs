@@ -579,7 +579,6 @@ export const CONFIG_WRITE_WHITELIST = [
   'cardWidth',      // 卡片宽度 px
   'perPage',        // 拉取数量上限
   'thumbWidth',     // 缩略图宽度(实测 7bu.top 不支持改写,保持 null)
-  'lazyRootMargin', // 懒加载根边距
 ];
 
 const CONFIG_HEADER = `/* ============================================================
@@ -605,9 +604,8 @@ const CONFIG_HEADER = `/* ======================================================
  * 规则:
  *   - 必须是普通对象且至少一个键
  *   - 只允许白名单键(mode/token 等一律拒绝)
- *   - rows: 1–10 整数;cardWidth: 150–600 整数;perPage: 1–200 整数
+ *   - rows: 1–6 整数;cardWidth: 180–560 整数;perPage: 1–200 整数
  *   - thumbWidth: 100–2000 整数或 null
- *   - lazyRootMargin: 形如 "200px"(1–16 字符)
  * @throws 若不合法
  */
 export function validateConfigPatch(patch) {
@@ -635,10 +633,6 @@ export function validateConfigPatch(patch) {
     } else if (k === 'thumbWidth') {
       if (v !== null && (!Number.isInteger(v) || v < 100 || v > 2000)) {
         throw new Error('thumbWidth 必须是 100–2000 的整数或 null');
-      }
-    } else if (k === 'lazyRootMargin') {
-      if (typeof v !== 'string' || !/^\d+px$/.test(v) || v.length > 16) {
-        throw new Error('lazyRootMargin 必须是形如 "200px" 的字符串');
       }
     }
   }

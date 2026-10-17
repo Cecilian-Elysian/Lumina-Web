@@ -8,7 +8,7 @@ import { registerSaver, setDirty } from './queue';
 
 /* ============================================================
  * 配置 Tab — 编辑 src/site/config.ts 的版面/拉取字段
- *   - 仅白名单字段可改(rows/cardWidth/perPage/thumbWidth/lazyRootMargin)
+ *   - 仅白名单字段可改(rows/cardWidth/perPage/thumbWidth)
  *   - mode/token/字段映射等敏感键不可见改(服务端二次校验)
  *   - 保存走操作队列批量落盘;同步统一走「保存并部署」
  *   ⚠ 保存会重写 config.ts,手工注释会丢失(字段值保留)
@@ -19,7 +19,6 @@ const form = reactive({
   cardWidth: 300,
   perPage: 100,
   thumbWidth: '' as string,   // 空串 = null
-  lazyRootMargin: '200px',
 });
 /** 服务器端当前快照(dirty 对比基准) */
 const snapshot = ref('');
@@ -31,7 +30,6 @@ function fillForm(cfg: NonNullable<Awaited<ReturnType<typeof loadViewerConfig>>>
   form.cardWidth = cfg.cardWidth ?? 300;
   form.perPage = cfg.perPage ?? 100;
   form.thumbWidth = cfg.thumbWidth == null ? '' : String(cfg.thumbWidth);
-  form.lazyRootMargin = cfg.lazyRootMargin ?? '200px';
   snapshot.value = JSON.stringify(currentPatch());
 }
 
@@ -43,22 +41,21 @@ function currentPatch(): ConfigPatch {
     cardWidth: Number(form.cardWidth),
     perPage: Number(form.perPage),
     thumbWidth: tw === '' ? null : Number(tw),
-    lazyRootMargin: String(form.lazyRootMargin).trim(),
   };
 }
 
 const dirty = computed(() => JSON.stringify(currentPatch()) !== snapshot.value);
 
-/** 客户端预校验(服务端还会再验一次) */
+/** 客户端预校验。范围必须与 src/site/settings.ts 的 ROWS_RANGE / WIDTH_RANGE 一致:
+ *  站点 loadSettings() 会按自己的范围 clamp,写宽了只会「保存成功但被静默改掉」。 */
 const validationError = computed(() => {
   const p = currentPatch();
-  if (!Number.isInteger(p.rows) || p.rows! < 1 || p.rows! > 10) return '行数必须是 1–10 的整数';
-  if (!Number.isInteger(p.cardWidth) || p.cardWidth! < 150 || p.cardWidth! > 600) return '卡片宽度必须是 150–600 的整数';
+  if (!Number.isInteger(p.rows) || p.rows! < 1 || p.rows! > 6) return '行数必须是 1–6 的整数';
+  if (!Number.isInteger(p.cardWidth) || p.cardWidth! < 180 || p.cardWidth! > 560) return '卡片宽度必须是 180–560 的整数';
   if (!Number.isInteger(p.perPage) || p.perPage! < 1 || p.perPage! > 200) return '拉取上限必须是 1–200 的整数';
   if (p.thumbWidth != null && (!Number.isInteger(p.thumbWidth) || p.thumbWidth < 100 || p.thumbWidth > 2000)) {
     return '缩略图宽度必须是 100–2000 的整数或留空';
   }
-  if (!/^\d+px$/.test(p.lazyRootMargin ?? '')) return '懒加载边距必须是形如 200px';
   return '';
 });
 
@@ -118,14 +115,14 @@ onMounted(reload);
       <section class="config-form">
         <label class="config-row">
           <span class="config-label">图片墙行数</span>
-          <input v-model.number="form.rows" type="number" min="1" max="10" step="1">
-          <span class="config-hint">1–10,主页流动墙行数</span>
+          <input v-model.number="form.rows" type="number" min="1" max="6" step="1">
+          <span class="config-hint">1–6,主页流动墙行数</span>
         </label>
 
         <label class="config-row">
           <span class="config-label">卡片宽度 (px)</span>
-          <input v-model.number="form.cardWidth" type="number" min="150" max="600" step="10">
-          <span class="config-hint">150–600,单张卡片基准宽度</span>
+          <input v-model.number="form.cardWidth" type="number" min="180" max="560" step="10">
+          <span class="config-hint">180–560,单张卡片基准宽度</span>
         </label>
 
         <label class="config-row">
@@ -138,12 +135,6 @@ onMounted(reload);
           <span class="config-label">缩略图宽度</span>
           <input v-model="form.thumbWidth" type="text" placeholder="留空 = null(不改写)">
           <span class="config-hint">100–2000 或留空;实测 7bu.top 不支持改写,保持留空</span>
-        </label>
-
-        <label class="config-row">
-          <span class="config-label">懒加载边距</span>
-          <input v-model="form.lazyRootMargin" type="text" placeholder="200px">
-          <span class="config-hint">形如 200px,IntersectionObserver rootMargin</span>
         </label>
       </section>
 

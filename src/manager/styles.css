@@ -574,11 +574,6 @@ html, body {
   border-color: rgba(255, 77, 109, 0.5);
   background: rgba(255, 77, 109, 0.10);
 }
-.album-chip.is-drop-hover {
-  border-color: var(--ok);
-  background: rgba(61, 220, 151, 0.14);
-  transform: scale(1.05);
-}
 .album-chip-count {
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -593,10 +588,6 @@ html, body {
 .album-chip-add:hover { color: var(--primary); border-style: dashed; }
 .album-chip-trash { margin-left: auto; border-color: rgba(255, 138, 128, 0.35); color: var(--danger); }
 .album-chip-trash:hover { background: rgba(255, 125, 104, 0.1); }
-.album-chip-trash.is-drop-hover {
-  border-color: var(--danger);
-  background: rgba(255, 125, 104, 0.2);
-}
 
 .album-chip-actions {
   display: none;

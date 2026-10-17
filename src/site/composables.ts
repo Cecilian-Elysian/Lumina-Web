@@ -151,16 +151,7 @@ export function useTags() {
       .map(([t]) => t);
   }
 
-  /** 全站标签(去重,频次降序) */
-  function allTags(): string[] {
-    const urls = new Set([
-      ...Object.keys(TAGS as Record<string, unknown>),
-      ...Object.keys(readTagOverrides()),
-    ]);
-    return albumTags([...urls]);
-  }
-
-  return { tagsOf, albumTags, allTags };
+  return { tagsOf, albumTags };
 }
 
 /* ============================================================

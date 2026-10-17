@@ -90,7 +90,6 @@ export interface ViewerConfig {
   cardWidth?: number;
   perPage: number;
   thumbWidth?: number | null;
-  lazyRootMargin?: string;
   imgField: string;
   imgUrlField: string;
   /** 缩略图字段路径(服务端 /api/viewer-config 已返回,历史版本客户端漏声明) */
@@ -101,7 +100,7 @@ export interface ViewerConfig {
 
 /** 允许写入 config.ts 的白名单字段(与服务端 CONFIG_WRITE_WHITELIST 一致) */
 export const CONFIG_WHITELIST = [
-  'rows', 'cardWidth', 'perPage', 'thumbWidth', 'lazyRootMargin',
+  'rows', 'cardWidth', 'perPage', 'thumbWidth',
 ] as const;
 
 export type ConfigPatch = Partial<Pick<ViewerConfig, (typeof CONFIG_WHITELIST)[number]>>;

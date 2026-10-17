@@ -58,7 +58,7 @@ describe('validateTagsDoc', () => {
 
 describe('validateConfigPatch', () => {
   it('合法 patch 通过', () => {
-    expect(() => validateConfigPatch({ rows: 3, cardWidth: 300, perPage: 100, thumbWidth: null, lazyRootMargin: '200px' })).not.toThrow();
+    expect(() => validateConfigPatch({ rows: 3, cardWidth: 300, perPage: 100, thumbWidth: null })).not.toThrow();
     expect(() => validateConfigPatch({ rows: 5 })).not.toThrow();
   });
 
@@ -101,15 +101,9 @@ describe('validateConfigPatch', () => {
     expect(() => validateConfigPatch({ thumbWidth: 'abc' })).toThrow(/thumbWidth/);
   });
 
-  it('lazyRootMargin 必须形如 "200px"', () => {
-    expect(() => validateConfigPatch({ lazyRootMargin: '200px' })).not.toThrow();
-    expect(() => validateConfigPatch({ lazyRootMargin: '200' })).toThrow(/lazyRootMargin/);
-    expect(() => validateConfigPatch({ lazyRootMargin: 200 })).toThrow(/lazyRootMargin/);
-  });
-
   it('白名单完整(与设计一致)', () => {
     expect(CONFIG_WRITE_WHITELIST).toEqual([
-      'rows', 'cardWidth', 'perPage', 'thumbWidth', 'lazyRootMargin',
+      'rows', 'cardWidth', 'perPage', 'thumbWidth',
     ]);
   });
 });
