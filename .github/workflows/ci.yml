@@ -1,0 +1,40 @@
+name: CI
+
+# 只做质量闸门,不做部署。
+# 部署由 Cloudflare Pages 的 Git 集成负责(Dashboard → Builds),
+# 详见 README「部署」一节 —— 不要在此加 deploy 步骤。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 不用 `|| npm install`:那会掩盖 lockfile 与 package.json 的漂移
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx vue-tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

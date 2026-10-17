@@ -242,19 +242,23 @@ function lbOnKey(e: KeyboardEvent) {
  * ============================================================ */
 const BANNER_LS_KEY = 'lumina.banner.dismissed';
 
+/** 已 dismiss 的消息集合:启动时从 localStorage 读入,
+ *  否则「不再提示」刷新即失效(只写不读)。 */
+function readDismissed(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(BANNER_LS_KEY) || '{}') || {}; } catch { return {}; }
+}
+
 const bannerState = {
   msg: ref(''),
   visible: ref(false),
   fading: ref(false),
-  /** 当前消息是否已被用户 dismiss(同一会话内不再弹) */
-  dismissed: ref(false),
 };
 
 let bannerTimer: ReturnType<typeof setTimeout> | null = null;
 
 function showBanner(msg: string) {
-  // 同消息已 dismiss → 跳过(避免每次 fetch 重试都弹)
-  if (bannerState.dismissed.value && bannerState.msg.value === msg) return;
+  // 已 dismiss(本浏览器)→ 跳过,避免每次重试都弹
+  if (readDismissed()[msg]) return;
 
   bannerState.msg.value = msg;
   bannerState.fading.value = false;
@@ -269,19 +273,13 @@ function showBanner(msg: string) {
 function dismissBanner() {
   bannerState.visible.value = false;
   bannerState.fading.value = false;
-  bannerState.dismissed.value = true;
   try {
-    // 仅记忆当前消息(key 用消息前缀,避免日后改文案还能命中)
-    const dismissed = JSON.parse(localStorage.getItem(BANNER_LS_KEY) || '{}');
+    // key 用消息原文:改文案即视为新提示,不会误伤旧记忆
+    const dismissed = readDismissed();
     dismissed[bannerState.msg.value] = true;
     localStorage.setItem(BANNER_LS_KEY, JSON.stringify(dismissed));
   } catch {}
   if (bannerTimer) { clearTimeout(bannerTimer); bannerTimer = null; }
-}
-
-function resetBannerMemory() {
-  try { localStorage.removeItem(BANNER_LS_KEY); } catch {}
-  bannerState.dismissed.value = false;
 }
 
 export function useErrorBanner() {
@@ -289,7 +287,6 @@ export function useErrorBanner() {
     ...bannerState,
     showBanner,
     dismiss: dismissBanner,
-    reset: resetBannerMemory,
   };
 }
 

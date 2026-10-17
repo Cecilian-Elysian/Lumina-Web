@@ -83,6 +83,17 @@ describe('validateConfigPatch', () => {
     expect(() => validateConfigPatch({ perPage: 201 })).toThrow(/范围/);
   });
 
+  // 边界值必须与 src/site/settings.ts 的 ROWS_RANGE / WIDTH_RANGE 对齐:
+  // 站点 loadSettings() 会按自己的范围 clamp,管理端放宽只会写出静默失效的值。
+  it('边界与站点范围对齐(rows 1–6 / cardWidth 180–560)', () => {
+    expect(() => validateConfigPatch({ rows: 6 })).not.toThrow();
+    expect(() => validateConfigPatch({ rows: 7 })).toThrow(/范围/);
+    expect(() => validateConfigPatch({ cardWidth: 180 })).not.toThrow();
+    expect(() => validateConfigPatch({ cardWidth: 179 })).toThrow(/范围/);
+    expect(() => validateConfigPatch({ cardWidth: 560 })).not.toThrow();
+    expect(() => validateConfigPatch({ cardWidth: 561 })).toThrow(/范围/);
+  });
+
   it('thumbWidth 接受 100–2000 整数或 null', () => {
     expect(() => validateConfigPatch({ thumbWidth: 600 })).not.toThrow();
     expect(() => validateConfigPatch({ thumbWidth: null })).not.toThrow();

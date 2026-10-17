@@ -307,6 +307,10 @@ body {
   display: flex;
   flex: none;
   width: max-content;
+  /* 只过渡 opacity:与 HomeView 的 FADE_MS=400ms 对齐,
+     配合 trackStyle() 注入的 transitionDelay 做逐行错峰。
+     缺失此行会让 .swapping 变成硬切,且换班期白屏不可点。 */
+  transition: opacity 400ms ease;
 }
 
 .wall.ready .row-track {

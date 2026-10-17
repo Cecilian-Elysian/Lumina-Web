@@ -625,7 +625,10 @@ export function validateConfigPatch(patch) {
     const v = patch[k];
     if (k === 'rows' || k === 'cardWidth' || k === 'perPage') {
       if (!Number.isInteger(v)) throw new Error(`${k} 必须是整数,实际 ${JSON.stringify(v)}`);
-      const range = { rows: [1, 10], cardWidth: [150, 600], perPage: [1, 200] }[k];
+      // ⚠ 必须与 src/site/settings.ts 的 ROWS_RANGE / WIDTH_RANGE 完全一致:
+      //    站点 loadSettings() 会按自己的范围 clamp,管理端放宽只会写出
+      //    "看似保存成功、实际被站点静默改掉" 的值。
+      const range = { rows: [1, 6], cardWidth: [180, 560], perPage: [1, 200] }[k];
       if (v < range[0] || v > range[1]) {
         throw new Error(`${k} 超出范围 ${range[0]}–${range[1]},实际 ${v}`);
       }

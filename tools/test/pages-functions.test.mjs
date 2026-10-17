@@ -153,10 +153,13 @@ describe('functions/api/visit', () => {
 });
 
 /* ---------------- /api/likes ---------------- */
-function likeRequest(body, env) {
+/** 点赞接口只接受白名单 host(与 functions/api/likes.js DEFAULT_ALLOWED_HOSTS 一致) */
+const IMG = 'https://bu.dusays.com/a.jpg';
+
+function likeRequest(body, env, { headers } = {}) {
   const request = new Request('https://lumina.test/api/likes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}),
     body: JSON.stringify(body),
   });
   return likesHandler({ request, env }).then((r) => r.json());
@@ -176,26 +179,58 @@ describe('functions/api/likes', () => {
 
   it('GET 返回全量计数表', async () => {
     const env = { DB: createMockD1() };
-    await likeRequest({ url: 'https://a/1.jpg', delta: 1 }, env);
-    await likeRequest({ url: 'https://a/2.jpg', delta: 1 }, env);
-    await likeRequest({ url: 'https://a/2.jpg', delta: 1 }, env);
+    await likeRequest({ url: 'https://bu.dusays.com/1.jpg', delta: 1 }, env);
+    await likeRequest({ url: 'https://bu.dusays.com/2.jpg', delta: 1 }, env);
+    await likeRequest({ url: 'https://bu.dusays.com/2.jpg', delta: 1 }, env);
 
     const res = await likesHandler({ request: new Request('https://lumina.test/api/likes'), env });
     const json = await res.json();
     expect(json.status).toBe(true);
-    expect(json.data.likes).toEqual({ 'https://a/1.jpg': 1, 'https://a/2.jpg': 2 });
+    expect(json.data.likes).toEqual({ 'https://bu.dusays.com/1.jpg': 1, 'https://bu.dusays.com/2.jpg': 2 });
   });
 
   it('非法 url / 非法 delta → 400', async () => {
     const env = { DB: createMockD1() };
     expect((await likeRequest({ url: 'ftp://x/a.jpg', delta: 1 }, env)).status).toBe(false);
-    expect((await likeRequest({ url: 'https://ok/a.jpg', delta: 0 }, env)).status).toBe(false);
-    expect((await likeRequest({ url: 'https://ok/a.jpg', delta: 2 }, env)).status).toBe(false);
+    expect((await likeRequest({ url: 'https://bu.dusays.com/a.jpg', delta: 0 }, env)).status).toBe(false);
+    expect((await likeRequest({ url: 'https://bu.dusays.com/a.jpg', delta: 2 }, env)).status).toBe(false);
     expect((await likeRequest({ url: 'x'.repeat(501), delta: 1 }, env)).status).toBe(false);
   });
 
+  it('拒绝白名单外的 host(否则垃圾行无上限写入)', async () => {
+    const env = { DB: createMockD1() };
+    const bad = await likeRequest({ url: 'https://evil.example.com/a.jpg', delta: 1 }, env);
+    expect(bad.status).toBe(false);
+    // 没写进库
+    const res = await likesHandler({ request: new Request('https://lumina.test/api/likes'), env });
+    expect((await res.json()).data.likes).toEqual({});
+  });
+
+  it('LIKE_ALLOWED_HOSTS 可覆盖白名单', async () => {
+    const env = { DB: createMockD1(), LIKE_ALLOWED_HOSTS: 'cdn.example.org' };
+    expect((await likeRequest({ url: 'https://cdn.example.org/a.jpg', delta: 1 }, env)).data.count).toBe(1);
+    expect((await likeRequest({ url: IMG, delta: 1 }, env)).status).toBe(false);
+  });
+
+  it('非 application/json → 415(阻断跨站表单伪造)', async () => {
+    const env = { DB: createMockD1() };
+    // <form enctype="text/plain"> 发的是简单请求,浏览器不会带 application/json
+    const r = await likeRequest({ url: IMG, delta: 1 }, env, {
+      headers: { 'Content-Type': 'text/plain' },
+    });
+    expect(r.status).toBe(false);
+  });
+
+  it('body 为 null / 数组 / 数字 → 400,不抛未捕获异常', async () => {
+    const env = { DB: createMockD1() };
+    for (const body of [null, [1, 2], 42, 'str']) {
+      const r = await likeRequest(body, env);
+      expect(r.status).toBe(false);
+    }
+  });
+
   it('未绑定 D1 → status:false', async () => {
-    const r = await likeRequest({ url: 'https://a/1.jpg', delta: 1 }, {});
+    const r = await likeRequest({ url: IMG, delta: 1 }, {});
     expect(r.status).toBe(false);
   });
 });
