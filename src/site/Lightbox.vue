@@ -15,7 +15,12 @@ const { isFav, toggleFav } = useFavorites();
 
 /* 大图换图淡入:src 变化时先透明,load 后显示 */
 const imgLoaded = ref(false);
-watch(() => current.value?.url, () => { imgLoaded.value = false; });
+/** 原图加载失败(404/网络/被图床清除):显示占位层而不是 0×0 空白 */
+const imgFailed = ref(false);
+watch(() => current.value?.url, () => {
+  imgLoaded.value = false;
+  imgFailed.value = false;
+});
 
 /* ---- 邻图预热:左右各 1 张 ----
  * 灯箱加载的是原图(单张常以 MB 计),等点击切换才开始下载,
@@ -57,6 +62,11 @@ const safeUrl = computed(() => {
   const u = current.value?.url || '';
   return /^https?:\/\//i.test(u) ? u : '';
 });
+
+/** 失败占位的「看下一张」:换图后 watch 会复位 imgFailed */
+function nextAfterFail() {
+  next();
+}
 
 function onFav() {
   const url = current.value?.url;
@@ -261,7 +271,13 @@ function lockScroll(lock: boolean) {
 }
 
 watch(isOpen, (open) => {
-  if (!open) resetView();
+  if (open) {
+    // 同一张图关了再开:url 不变,上面的 watch 不会触发 → 在此复位两态
+    imgLoaded.value = false;
+    imgFailed.value = false;
+  } else {
+    resetView();
+  }
   lockScroll(open);
 }, { immediate: true });
 onUnmounted(() => {
@@ -324,14 +340,21 @@ onUnmounted(() => {
       @pointercancel="onPointerUp"
     >
       <img
+        v-show="!imgFailed"
         class="lb-img"
         :style="imgStyle"
         :src="current?.url"
         :alt="current?.name || `图片 ${(index ?? 0) + 1}`"
         draggable="false"
         @load="imgLoaded = true"
-        @error="imgLoaded = true"
+        @error="imgFailed = true"
       >
+      <div v-if="imgFailed" class="lb-fail" role="alert">
+        <p class="lb-fail-title">原图加载失败</p>
+        <p class="lb-fail-desc">文件可能已被图床清除,或当前网络无法访问图床</p>
+        <p v-if="current?.name" class="lb-fail-name">{{ current.name }}</p>
+        <button type="button" class="lb-fail-next" @click="nextAfterFail">看下一张 ›</button>
+      </div>
     </div>
 
     <button class="lb-btn lb-next" aria-label="下一张" title="下一张 (→)" @click="next">›</button>

@@ -6,6 +6,7 @@
  * pointerdown/keydown/wheel/touchstart 任一;进入后 800ms 输入免疫,
  * 防进入的那下点击秒退;退出信号不含 pointermove(轻微晃动不打断)。
  * 序列:random 走完一圈重洗且首项 ≠ 当前项;seq 按拉取顺序循环。
+ * 坏图:原图加载失败(图床死链)自动跳下一张;整条列表全坏则退出。
  * ============================================================ */
 import { ref } from 'vue';
 import { loadImages } from '@/shared/apiClient';
@@ -21,6 +22,8 @@ const state = {
 /** 当前播放序列与游标(非响应式,仅内部消费) */
 let playlist: string[] = [];
 let pos = 0;
+/** 本次会话已确认加载失败的原图 url(换图时跳过;show/hide 清空) */
+const brokenUrls = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let starting = false;
@@ -84,13 +87,28 @@ function advance(): void {
     scheduleNext();
     return;
   }
-  const next = advancePlaylist(playlist, pos, order());
-  playlist = next.list;
-  pos = next.pos;
-  state.current.value = next.url;
-  // 预加载「下一张」(不是刚显示的这张),交叉淡入才不断档
-  preload(playlist[(pos + 1) % playlist.length]);
-  scheduleNext();
+  // 连续跳过已登记的坏图;循环上限 = 列表长度(全部都坏时自然终止)→ 退出屏保
+  for (let i = 0; i < playlist.length; i++) {
+    const next = advancePlaylist(playlist, pos, order());
+    playlist = next.list;
+    pos = next.pos;
+    if (!brokenUrls.has(next.url)) {
+      state.current.value = next.url;
+      // 预加载「下一张」(不是刚显示的这张),交叉淡入才不断档
+      preload(playlist[(pos + 1) % playlist.length]);
+      scheduleNext();
+      return;
+    }
+  }
+  hideScreensaver();
+}
+
+/** 原图加载失败上报(Overlay 的 @error 调):登记坏图;
+ *  若挂的正是当前展示图,立即跳下一张(不等间隔计时)。 */
+export function reportBrokenImage(url: string): void {
+  if (!url || !state.active.value || brokenUrls.has(url)) return;
+  brokenUrls.add(url);
+  if (state.current.value === url) advance();
 }
 
 /** 预加载指定 url(利用浏览器缓存,交叉淡入不断档) */
@@ -117,6 +135,7 @@ export async function showScreensaver(): Promise<void> {
     // await 期间被 hide() 或新一轮 show() 赶上 → 本次作废(hide 必胜)
     if (myToken !== showToken) return;
     if (images.length === 0) return;
+    brokenUrls.clear(); // 新会话重新验图:上次失败的图这次可能已恢复
     const urls = images.map((it) => it.url);
     playlist = order() === 'random' ? shuffled(urls) : urls;
     pos = 0;
@@ -136,6 +155,7 @@ export function hideScreensaver(): void {
   state.current.value = '';
   playlist = [];
   pos = 0;
+  brokenUrls.clear();
   if (timer) {
     clearTimeout(timer);
     timer = null;

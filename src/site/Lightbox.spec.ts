@@ -178,6 +178,64 @@ describe('Lightbox 收藏', () => {
   });
 });
 
+/* ---- 原图加载失败占位 ---- */
+describe('Lightbox 坏图占位', () => {
+  const lb = useLightbox();
+
+  beforeEach(() => {
+    lb.close();
+  });
+
+  it('@error 后显示占位层(标题 + 文件名),img 隐藏', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    expect(wrapper.find('.lb-fail').exists()).toBe(false);
+
+    await wrapper.find('.lb-img').trigger('error');
+    await nextTick();
+    expect(wrapper.find('.lb-fail').exists()).toBe(true);
+    expect(wrapper.text()).toContain('原图加载失败');
+    expect(wrapper.text()).toContain('one');
+    // 失败图不再渲染 0×0 空白:v-show 隐藏(查内联 display,与淡入 opacity 解耦)
+    expect((wrapper.find('.lb-img').element as HTMLElement).style.display).toBe('none');
+    wrapper.unmount();
+  });
+
+  it('占位层「看下一张」→ 前进且失败态复位', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    await wrapper.find('.lb-img').trigger('error');
+    await nextTick();
+    expect(wrapper.find('.lb-fail').exists()).toBe(true);
+
+    await wrapper.find('.lb-fail-next').trigger('click');
+    await nextTick();
+    expect(wrapper.find('.lb-img').attributes('src')).toBe('https://a/2.jpg');
+    expect(wrapper.find('.lb-fail').exists()).toBe(false);
+    expect((wrapper.find('.lb-img').element as HTMLElement).style.display).toBe('');
+    wrapper.unmount();
+  });
+
+  it('正常加载不显示占位;换图会清掉上一张的失败态', async () => {
+    const wrapper = mount(Lightbox);
+    lb.open(items, 0);
+    await nextTick();
+    await wrapper.find('.lb-img').trigger('load');
+    expect(wrapper.find('.lb-fail').exists()).toBe(false);
+
+    await wrapper.find('.lb-img').trigger('error');
+    await nextTick();
+    expect(wrapper.find('.lb-fail').exists()).toBe(true);
+
+    lb.next();
+    await nextTick();
+    expect(wrapper.find('.lb-fail').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
+
 /* ---- 触屏手势 ----
  * jsdom 的 PointerEvent 可用性不稳定,直接派发带坐标属性的
  * 通用 Event(组件只读 pointerId/pointerType/clientX/clientY) */

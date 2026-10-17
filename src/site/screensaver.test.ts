@@ -312,3 +312,107 @@ describe('initScreensaver — 闲置自动进入', () => {
     }
   });
 });
+
+describe('reportBrokenImage — 坏图跳过', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    const [{ useScreensaver }] = await freshModules();
+    useScreensaver().hide();
+  });
+
+  it('当前图加载失败 → 不等间隔立即跳下一张', async () => {
+    vi.useFakeTimers();
+    try {
+      const [{ showScreensaver, useScreensaver, reportBrokenImage }, { useSettings, defaultSettings, defaultSaver }] =
+        await freshModules();
+      const { settings } = useSettings();
+      settings.value = {
+        ...defaultSettings(),
+        screensaver: { ...defaultSaver(), order: 'seq', intervalSec: 60 },
+      };
+
+      const saver = useScreensaver();
+      await showScreensaver();
+      expect(saver.current.value).toBe('https://a/1.jpg');
+
+      reportBrokenImage('https://a/1.jpg');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(saver.current.value).toBe('https://a/2.jpg');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('已登记的坏图在后续换图时被跳过', async () => {
+    vi.useFakeTimers();
+    try {
+      const [{ showScreensaver, useScreensaver, reportBrokenImage }, { useSettings, defaultSettings, defaultSaver }] =
+        await freshModules();
+      const { settings } = useSettings();
+      settings.value = {
+        ...defaultSettings(),
+        screensaver: { ...defaultSaver(), order: 'seq', intervalSec: 5 },
+      };
+
+      const saver = useScreensaver();
+      await showScreensaver();
+      expect(saver.current.value).toBe('https://a/1.jpg');
+
+      reportBrokenImage('https://a/2.jpg'); // 非当前图:只登记
+      expect(saver.current.value).toBe('https://a/1.jpg');
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(saver.current.value).toBe('https://a/3.jpg'); // 跳过坏的 2
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('整条列表全坏 → 退出屏保(防死循环)', async () => {
+    const [{ showScreensaver, useScreensaver, reportBrokenImage }] = await freshModules();
+    const { loadImages } = await import('@/shared/apiClient');
+    vi.mocked(loadImages).mockResolvedValueOnce({ images: [imgs[0], imgs[1]] });
+
+    const saver = useScreensaver();
+    await showScreensaver();
+    expect(saver.current.value).toBe('https://a/1.jpg');
+
+    reportBrokenImage('https://a/1.jpg'); // 1 坏 → 跳到 2
+    expect(saver.current.value).toBe('https://a/2.jpg');
+
+    reportBrokenImage('https://a/2.jpg'); // 2 也坏 → 无图可放
+    expect(saver.active.value).toBe(false);
+    expect(saver.current.value).toBe('');
+  });
+
+  it('hide 后重新 show 清空坏图登记(上次的坏图重新参与播放)', async () => {
+    vi.useFakeTimers();
+    try {
+      const [{ showScreensaver, useScreensaver, reportBrokenImage, hideScreensaver }, { useSettings, defaultSettings, defaultSaver }] =
+        await freshModules();
+      const { settings } = useSettings();
+      settings.value = {
+        ...defaultSettings(),
+        screensaver: { ...defaultSaver(), order: 'seq', intervalSec: 5 },
+      };
+
+      const saver = useScreensaver();
+      await showScreensaver();
+      reportBrokenImage('https://a/2.jpg');
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(saver.current.value).toBe('https://a/3.jpg'); // 上次会话:2 被跳过
+
+      hideScreensaver();
+      await showScreensaver(); // 新会话
+      expect(saver.current.value).toBe('https://a/1.jpg');
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(saver.current.value).toBe('https://a/2.jpg'); // 登记已清空:2 回归
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

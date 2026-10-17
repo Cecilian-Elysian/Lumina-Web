@@ -35,3 +35,6 @@ tools/.cache/
 *.bak
 *.swp
 *~
+
+# 本地错误记录文档（仅本机查阅，绝不上传）
+docs/lessons-learned.md

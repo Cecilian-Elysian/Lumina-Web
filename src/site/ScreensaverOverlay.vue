@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue';
 import type { CSSProperties } from 'vue';
-import { useScreensaver } from './screensaver';
+import { useScreensaver, reportBrokenImage } from './screensaver';
 import { useFocal, lightboxIsOpen } from './composables';
 import { useSettings } from './settings';
 
@@ -45,6 +45,11 @@ watch(current, (url) => {
   else slotA.value = url;
   showA.value = !showA.value;
 });
+
+/** 图床死链:上报后自动跳下一张(坏图 0×0 渲染,表现为黑场一闪,故跳过) */
+function onLayerError(url: string) {
+  reportBrokenImage(url);
+}
 
 /* ---- Ken Burns 时长 = 间隔 + 2s 缓冲(淡入后仍有缓慢运动) ---- */
 function layerStyle(url: string): CSSProperties {
@@ -117,6 +122,7 @@ onUnmounted(detach);
       :style="layerStyle(slotA)"
       alt=""
       draggable="false"
+      @error="onLayerError(slotA)"
     >
     <img
       v-if="slotB"
@@ -126,6 +132,7 @@ onUnmounted(detach);
       :style="layerStyle(slotB)"
       alt=""
       draggable="false"
+      @error="onLayerError(slotB)"
     >
     <p class="ss-hint" :class="{ fade: hintFading }">屏保模式 · 点击 / 按键 / 滚轮退出</p>
   </div>

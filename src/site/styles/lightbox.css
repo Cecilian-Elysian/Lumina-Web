@@ -74,6 +74,56 @@
 
 .lb-stage .lb-img { will-change: transform; }
 
+/* ============ 原图加载失败占位 ============ */
+/* 图床死链(缩略图正常、原图 404)时不再表现为纯空白 */
+.lb-fail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 88vw;
+  padding: 36px 48px;
+  border-radius: 14px;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.065));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  text-align: center;
+  user-select: none;
+}
+.lb-fail-title {
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.lb-fail-desc {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.85rem;
+}
+.lb-fail-name {
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.lb-fail-next {
+  margin-top: 6px;
+  padding: 8px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.lb-fail-next:hover { background: rgba(255, 255, 255, 0.26); }
+
 .lb-download {
   top: 22px;
   right: 86px;   /* 避开右上角 × 按钮 */

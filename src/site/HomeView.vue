@@ -49,6 +49,9 @@ const ROW_GAP = 16;
 const FADE_MS = 400;
 /** 换班时每行的错峰延迟(形成波浪) */
 const ROW_STAGGER_MS = 60;
+/** 开屏进度条最短停留时长:网快/全缓存时避免进度条一闪而过(观感生硬)。
+ *  从组件挂载起算,不足此时长的部分在就绪前补等。 */
+const MIN_SPLASH_MS = 800;
 
 const { focalStyle } = useFocal();
 const lb = useLightbox();
@@ -75,6 +78,10 @@ const heldRows = ref(new Set<number>());
 const pausedRows = ref(new Set<number>());
 
 let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+/** 开屏起点(onMounted 记录),配合 MIN_SPLASH_MS 计算还需补等多久 */
+let openedAt = 0;
+/** 最短时长补足计时器(非 null = 已决定就绪、正在补等;防双触发源重复排程) */
+let pendingReadyTimer: ReturnType<typeof setTimeout> | null = null;
 
 /* 按行数把窗口条目轮转分桶 + 行内打乱(输入已带池下标 gi) */
 function buildRows(items: RowItem[], n: number): RowItem[][] {
@@ -237,6 +244,22 @@ async function rotateNow(): Promise<void> {
 }
 
 function forceReady() {
+  // 幂等:已就绪 / 正在补等中,双重触发源(flushLoaded 与 safetyTimer)只吃一次
+  if (allLoaded.value || pendingReadyTimer != null) return;
+  // 开屏不足最短时长 → 补足后再就绪,进度条不闪现
+  const wait = MIN_SPLASH_MS - (performance.now() - openedAt);
+  if (wait > 0) {
+    pendingReadyTimer = setTimeout(() => {
+      pendingReadyTimer = null;
+      applyReady();
+    }, wait);
+    return;
+  }
+  applyReady();
+}
+
+/** 真正切到就绪态(forceReady 的落地步骤) */
+function applyReady() {
   if (allLoaded.value) return;
   if (loadedUrls.value.size < total.value) {
     console.warn('[Lumina] 加载超时/部分失败,强制启动滚动');
@@ -606,6 +629,7 @@ function resetTouchState() {
 
 onMounted(async () => {
   disposed = false;
+  openedAt = performance.now();
 
   window.addEventListener('resize', onResize);
   document.addEventListener('visibilitychange', onVisibilityChange);
@@ -640,6 +664,7 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange);
   unwatchMotionPref();
   if (safetyTimer) clearTimeout(safetyTimer);
+  if (pendingReadyTimer) { clearTimeout(pendingReadyTimer); pendingReadyTimer = null; }
   if (justDraggedTimer) clearTimeout(justDraggedTimer);
   if (pendingOpenTimer) clearTimeout(pendingOpenTimer);
   if (rotateTimer) { clearTimeout(rotateTimer); rotateTimer = null; }
