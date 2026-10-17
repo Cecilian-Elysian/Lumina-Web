@@ -139,7 +139,8 @@ function pageUrl(page) {
   return u;
 }
 
-/** 单页拉取,带超时。失败一律 resolve 成 {ok:false} 而不是抛出。 */
+/** 单页拉取,带超时。失败一律 resolve 成 {ok:false} 而不是抛出。
+ *  @returns {Promise<{ok: true, res: Response} | {ok: false, res?: Response, err?: unknown}>} */
 async function fetchPage(page, headers) {
   try {
     const res = await fetch(pageUrl(page), { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });

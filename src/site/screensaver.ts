@@ -1,22 +1,11 @@
 /* ============================================================
  * 屏保模式 — 模块级单例(同 settings.ts / likes.ts 模式)
  * ------------------------------------------------------------
- * 职责:
- *   - active/current 状态 + 图片序列管理与预加载
- *   - initScreensaver():App.vue 挂载时调用一次(幂等)
- *       · 闲置自动进入(idleMin > 0 时;pointermove/按下/按键/滚轮/
- *         触摸任一交互重置计时,1s 节流;标签页隐藏时不触发,
- *         回到可见且仍空闲时重新武装)
- *       · URL 直达:?screensaver=1 图片加载完立即进入
- *
- * 序列策略:
- *   - random:Fisher-Yates 洗牌,走完一圈重洗,
- *     且保证重洗后首项 ≠ 当前项(单图列表除外,避免连续重复)
- *   - seq:按拉取顺序循环
- *
- * 退出由 ScreensaverOverlay.vue 处理(pointerdown/keydown/wheel/
- * touchstart 任一;进入后 800ms 输入免疫,防进入的那下点击秒退)。
- * 注意:退出信号不含 pointermove——鼠标轻微晃动不应打断屏保。
+ * 闲置自动进入(idleMin > 0;任一交互重置计时,1s 节流;后台不触发)
+ * 或 URL 直达(?screensaver=1)。退出在 ScreensaverOverlay.vue:
+ * pointerdown/keydown/wheel/touchstart 任一;进入后 800ms 输入免疫,
+ * 防进入的那下点击秒退;退出信号不含 pointermove(轻微晃动不打断)。
+ * 序列:random 走完一圈重洗且首项 ≠ 当前项;seq 按拉取顺序循环。
  * ============================================================ */
 import { ref } from 'vue';
 import { loadImages } from '@/shared/apiClient';

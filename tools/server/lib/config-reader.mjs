@@ -1,17 +1,7 @@
 #!/usr/bin/env node
-/* ============================================================
- * Lumina Tools — 共享 viewer 配置读取器
- * ------------------------------------------------------------
- * 供 server/ 和 ai/ 共享使用,从 ../js/*.js 解析数据。
- *
- * 安全要点:
- *   - 历史版本用 (0, eval)('(' + m[1] + ')') 解析 viewer 文件,
- *     若 viewer 文件被编辑时混入了非字面量表达式(如 process.exit),
- *     会被真的执行。
- *   - 现版本改用 acorn 静态解析,只接受
- *     ObjectExpression / ArrayExpression / Literal,
- *     任何其它节点都抛错,绝不执行。
- * ============================================================ */
+/* Lumina Tools — 共享数据文件读取器。
+ * 安全要点:历史版本用 (0, eval) 解析 viewer 文件,混入表达式会被真的执行;
+ * 现版本只用 acorn 静态解析,只接受 Object/Array/Literal,任何其它节点抛错,绝不执行。 */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'acorn';
@@ -19,34 +9,18 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/**
- * 定位 viewer 目录(本文件位于 tools/server/lib/,viewer 在 ../..)
- */
+/** viewer 根目录(本文件位于 tools/server/lib/,viewer 在 ../..) */
 export function getViewerDir() {
   return path.resolve(__dirname, '..', '..', '..');
 }
 
-/* ============================================================
- * 安全解析
- * ------------------------------------------------------------
- * 给定一段形如 `const FOO = {...};` 或 `window.FOO = {...};` 或裸 `{...}` 的代码,
- * 返回该对象字面量的纯数据值。
- *
- * 只接受:
- *   - ObjectExpression (递归)
- *   - ArrayExpression  (递归)
- *   - Literal (string / number / boolean / null)
- *
- * 其它节点(Identifier / CallExpression / MemberExpression / Function / ...)一律抛错。
- * 任何路径下都不会执行代码,绝不调用 process.exit / fetch 等。
- * ============================================================ */
+/** 给定形如 `const FOO = {...};` / `window.FOO = {...};` / 裸 `{...}` 的代码,
+ *  返回对象字面量的纯数据值。只接受 Object/Array/Literal(递归),
+ *  Identifier/Call/Member/Function 等一律抛错;任何路径下都不执行代码。 */
 export function safeParseObject(raw, varName) {
   if (typeof raw !== 'string') throw new Error('safeParseObject: raw 必须是字符串');
 
-  // 1. 去掉 /* ... */ 注释(数据文件顶部都是块注释)
   const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '');
-
-  // 2. 用 acorn 解析(sourceType: module 以支持 export const 声明)
   let ast;
   try {
     ast = parse(stripped, { ecmaVersion: 2022, sourceType: 'module' });
@@ -54,29 +28,22 @@ export function safeParseObject(raw, varName) {
     throw new Error('acorn 解析失败: ' + e.message);
   }
 
-  // 3. 拒绝顶层函数声明(含 export function),函数声明本身就是 RCE 风险
+  // 顶层函数声明本身就是 RCE 风险,直接拒
   for (const stmt of ast.body) {
-    const s = stmt.type === 'ExportNamedDeclaration' && stmt.declaration
-      ? stmt.declaration
-      : stmt;
+    const s = stmt.type === 'ExportNamedDeclaration' && stmt.declaration ? stmt.declaration : stmt;
     if (s.type === 'FunctionDeclaration' || s.type === 'FunctionExpression') {
       throw new Error('不允许顶层函数声明(纯字面量模式)');
     }
   }
 
-  // 4. 找到我们要的赋值语句
-  //    - 若提供了 varName:必须形如 `[export] const NAME = <obj>;` 或 `window.NAME = <obj>;`
-  //    - 若没提供:接受裸 `({...})` 表达式(单语句)
+  // 定位赋值语句:varName 匹配 `const NAME =` / `NAME =` / `window.NAME =`;
+  // 未提供 varName 时接受唯一的 `({...})` 表达式(裸 `{...}` 是 block,解析会报错)
   let targetNode = null;
 
   if (varName) {
     for (const stmt of ast.body) {
-      // 解开 export 包装(export const NAME = ... → VariableDeclaration)
-      const s = stmt.type === 'ExportNamedDeclaration' && stmt.declaration
-        ? stmt.declaration
-        : stmt;
+      const s = stmt.type === 'ExportNamedDeclaration' && stmt.declaration ? stmt.declaration : stmt;
 
-      // 形式 1: const|let|var NAME = <obj>;
       if (s.type === 'VariableDeclaration' &&
           (s.kind === 'const' || s.kind === 'let' || s.kind === 'var')) {
         for (const decl of s.declarations) {
@@ -88,7 +55,6 @@ export function safeParseObject(raw, varName) {
         if (targetNode) break;
         continue;
       }
-      // 形式 2: NAME = <obj>; 或 window.NAME = <obj>;(赋值表达式)
       if (s.type === 'ExpressionStatement') {
         const expr = s.expression;
         if (expr.type === 'AssignmentExpression' && expr.operator === '=') {
@@ -103,7 +69,6 @@ export function safeParseObject(raw, varName) {
       }
     }
   } else {
-    // 没指定 varName:接受 `({...})` 作为唯一语句(裸 `{...}` 在 JS 里是 block,会报错)
     if (ast.body.length === 1 &&
         ast.body[0].type === 'ExpressionStatement' &&
         ast.body[0].expression.type === 'ObjectExpression') {
@@ -114,22 +79,19 @@ export function safeParseObject(raw, varName) {
   if (!targetNode) {
     throw new Error(`未找到 ${varName ? '"' + varName + '"' : 'ObjectExpression'} 的赋值语句`);
   }
-
-  // 5. 走 AST 求值(只允许字面量)
   return evalLiteral(targetNode);
 }
 
+/** AST 求值:只接受 Literal / Object / Array,其余节点(含
+ *  undefined 字面量、spread、计算属性名、方法)一律抛错。 */
 function evalLiteral(node) {
   if (!node || typeof node !== 'object') {
     throw new Error('evalLiteral: 无效节点');
   }
 
   if (node.type === 'Literal') {
-    // 注意:undefined / function / symbol 等不允许(项目里不会出现)
     const v = node.value;
     if (v === undefined) {
-      // acorn 会把 { a: void 0 } 解析成 Literal value=undefined
-      // 这种刻意写法不在白名单,直接拒
       throw new Error('不允许 Literal undefined (请显式写 null 或省略字段)');
     }
     return v;
@@ -139,11 +101,9 @@ function evalLiteral(node) {
     const out = {};
     for (const prop of node.properties) {
       if (prop.type !== 'Property') {
-        // SpreadElement / MethodDefinition 等一律不允许
         throw new Error('对象中不允许 SpreadElement / Method(纯字面量模式)');
       }
       if (prop.computed) {
-        // 计算属性名 [expr]: 也属于表达式,拒绝
         throw new Error('不允许计算属性名 [expr]');
       }
       if (prop.method || prop.kind === 'get' || prop.kind === 'set') {
@@ -161,28 +121,19 @@ function evalLiteral(node) {
     return node.elements.map((el) => el === null ? null : evalLiteral(el));
   }
 
-  // 任何其它节点 = 一律拒绝
   throw new Error('拒绝非字面量节点: ' + node.type);
 }
 
-/* ============================================================
- * viewer src/site/config.ts (CONFIG)
- * ============================================================ */
+/* ---- src/site/config.ts (CONFIG) ---- */
 
-/**
- * 读取并解析 src/site/config.ts,返回完整的 CONFIG 对象。
- * @returns {Promise<Object>}
- */
+/** 读取并解析 src/site/config.ts,返回完整 CONFIG 对象 */
 export async function readViewerConfig() {
   const viewerDir = getViewerDir();
   const raw = await fs.readFile(path.join(viewerDir, 'src', 'site', 'config.ts'), 'utf8');
   return safeParseObject(raw, 'CONFIG');
 }
 
-/**
- * 从进程环境或 viewer 根目录的 .dev.vars 读取本地密钥。
- * 密钥只在 Node 进程内使用，不通过 Manager API 返回。
- */
+/** 从进程环境或 viewer 根目录 .dev.vars 读本地密钥;密钥不经过 Manager API 返回 */
 export async function readLocalSecret(name) {
   if (process.env[name]) return process.env[name];
   try {
@@ -198,15 +149,9 @@ export async function readLocalSecret(name) {
   return null;
 }
 
-/* ============================================================
- * focal-points (FOCAL_POINTS) — src/site/focalPoints.ts
- * ============================================================ */
+/* ---- focal-points (FOCAL_POINTS) — src/site/focalPoints.ts ---- */
 
-/**
- * 读取并解析 src/site/focalPoints.ts,返回 FOCAL_POINTS 对象。
- * 文件不存在时返回空对象。
- * @returns {Promise<Object>}
- */
+/** 读取 src/site/focalPoints.ts;文件不存在返回空对象 */
 export async function readFocalPoints() {
   const viewerDir = getViewerDir();
   try {
@@ -218,11 +163,7 @@ export async function readFocalPoints() {
   }
 }
 
-/**
- * 把 focal JSON 写回 src/site/focalPoints.ts(覆盖)。
- * 注意:保持纯字面量(无 import/类型注解),acorn 才能解析。
- * @param {Object} json
- */
+/** 把 focal JSON 覆盖写回 src/site/focalPoints.ts(保持纯字面量,acorn 才能解析) */
 export async function writeFocalPoints(json) {
   const viewerDir = getViewerDir();
   const header = `/* ============================================================
@@ -241,14 +182,8 @@ export async function writeFocalPoints(json) {
   return { ok: true, count: Object.keys(json).length };
 }
 
-/**
- * 合并新旧焦点数据(纯函数,不读写文件)
- *   - existing 中存在、AI 也检测到 → 用 AI 的(更新)
- *   - existing 中存在、AI 未检测到 → 保留旧值(不覆盖人工标注)
- *   - AI 检测到、existing 没有 → 新增
- *
- * 返回 { merged, stats: { kept, updated, added } }
- */
+/** 合并新旧焦点(AI 检测到的更新旧值,未检测到的保留人工标注)。
+ *  返回 { merged, stats: { kept, updated, added } } */
 export function mergeFocalPoints(existing, detected) {
   const merged = Object.assign({}, existing);
   let updated = 0;
@@ -264,22 +199,7 @@ export function mergeFocalPoints(existing, detected) {
   return { merged, stats: { kept, updated, added } };
 }
 
-/* ============================================================
- * 图集(albums)读写
- * ------------------------------------------------------------
- * 文件:src/site/albums.ts
- * 格式:
- *   export const ALBUMS = {
- *     _meta: [ { id: "abc123", name: "德克萨斯" }, ... ],
- *     "https://.../a.jpg": "abc123",  // url → album id
- *     "https://.../b.jpg": "def456"
- *   };
- *
- * 规则:
- *   - 一个 url 至多一个 album id;无 id = 未分组
- *   - _meta 数组顺序 = 图集显示/渲染顺序
- *   - 删除图集时,旗下 url 自动降级为未分组(仅清掉映射)
- * ============================================================ */
+/* ---- 图集(albums)读写:src/site/albums.ts(格式与规则见 ALBUMS_HEADER) ---- */
 
 const ALBUMS_HEADER = `/* ============================================================
  * 图集(手动分类)— 图片-图集映射数据桥
@@ -305,10 +225,7 @@ const ALBUMS_HEADER = `/* ======================================================
  *   }))
  * ============================================================ */\n`;
 
-/**
- * 读取 src/site/albums.ts。文件不存在返回空结构。
- * @returns {Promise<{_meta:Array<{id:string,name:string}>, [url:string]:string}>}
- */
+/** 读取 src/site/albums.ts;文件不存在返回空结构 */
 export async function readAlbums() {
   const viewerDir = getViewerDir();
   try {
@@ -320,23 +237,17 @@ export async function readAlbums() {
   }
 }
 
-/**
- * 把完整 albums 对象写回 src/site/albums.ts(覆盖)。
- * 写入顺序:_meta 数组保持;url 映射按 url 字典序排序(diff 稳定)。
- * @param {{_meta:Array,_images?:Object}} doc
- */
+/** 覆盖写回 albums;_meta 保持原序,url 映射按字典序排序(diff 稳定) */
 export async function writeAlbums(doc) {
   const viewerDir = getViewerDir();
   const meta = Array.isArray(doc._meta) ? doc._meta.filter((a) => a && a.id && a.name) : [];
   const metaIds = new Set(meta.map((a) => a.id));
 
-  // 收集映射;剔除指向不存在图集的 id
   const map = {};
   for (const [k, v] of Object.entries(doc)) {
     if (k === '_meta') continue;
     if (typeof v === 'string' && metaIds.has(v)) map[k] = v;
   }
-  // url 字典序排序
   const sortedMap = {};
   for (const k of Object.keys(map).sort()) sortedMap[k] = map[k];
 
@@ -346,15 +257,8 @@ export async function writeAlbums(doc) {
   return { ok: true, metaCount: meta.length, imageCount: Object.keys(sortedMap).length };
 }
 
-/**
- * 校验 albums 文档结构,失败抛错(含具体原因)
- * 规则:
- *   - 必须是普通对象
- *   - _meta 必须是数组
- *   - 每条 meta: id (1-64 字符串)、name (非空 trim 字符串)
- *   - 其它顶层 key 必须是 string(url)→ string(metaIds 里的 id)
- * @throws 若不合法
- */
+/** 校验 albums 文档:普通对象;_meta 数组且每条 id(1-64 字符)/name(非空)不重复;
+ *  其余键必须是 url → 已存在 id 的映射。失败抛错。 */
 export function validateAlbumsDoc(doc) {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
     throw new Error('body 必须是普通对象');
@@ -393,10 +297,7 @@ export function validateAlbumsDoc(doc) {
   }
 }
 
-/**
- * 创建一个新图集。name 必填,id 自动生成(随机 8 字符 hex)。
- * @returns {Promise<{id:string,name:string,ok:boolean}>}
- */
+/** 新建图集(name 必填,id 为随机 8 位 hex) */
 export async function addAlbum(name) {
   if (!name || typeof name !== 'string' || !name.trim()) {
     throw new Error('name 必填');
@@ -414,10 +315,7 @@ export async function addAlbum(name) {
   return { id, name: name.trim(), ok: true };
 }
 
-/**
- * 重命名一个图集。
- * @returns {Promise<{ok:boolean,name:string}>}
- */
+/** 重命名图集 */
 export async function renameAlbum(id, name) {
   if (!id || !name || !name.trim()) throw new Error('id 和 name 都必填');
   const doc = await readAlbums();
@@ -428,10 +326,7 @@ export async function renameAlbum(id, name) {
   return { ok: true, name: a.name };
 }
 
-/**
- * 删除一个图集。其下所有 url 映射自动清除(降级为未分组)。
- * @returns {Promise<{ok:boolean,removedCount:number}>}
- */
+/** 删除图集;旗下 url 映射自动清除(降级未分组) */
 export async function deleteAlbum(id) {
   if (!id) throw new Error('id 必填');
   const doc = await readAlbums();
@@ -447,25 +342,12 @@ export async function deleteAlbum(id) {
   return { ok: true, removedCount };
 }
 
-/**
- * 点分路径取值
- */
+/** 点分路径取值 */
 export function getByPath(obj, p) {
   return p.split('.').reduce((c, k) => (c == null ? undefined : c[k]), obj);
 }
 
-/* ============================================================
- * 标签(tags)读写
- * ------------------------------------------------------------
- * 文件:src/site/tags.ts
- * 格式:{ "https://.../a.jpg": ["德克萨斯", "立绘"], ... }
- *
- * 规则:
- *   - 键 = Image.url(原图直链),值 = string[](写回时去空/去重)
- *   - 写回时 url 按字典序排序(diff 稳定)
- *   - 浏览器侧 localStorage(lumina.tags.local)可临时覆盖,
- *     null = 清空该图全部标签
- * ============================================================ */
+/* ---- 标签(tags)读写:src/site/tags.ts(格式与规则见 TAGS_HEADER) ---- */
 
 const TAGS_HEADER = `/* ============================================================
  * Lumina — 图片标签数据(纯字面量)
@@ -484,11 +366,8 @@ const TAGS_HEADER = `/* ========================================================
  *   }))
  * ============================================================ */\n`;
 
-/**
- * 清洗 tags 文档(纯函数):剔除空 tag、去重、url 字典序排序。
- * @param {Record<string, string[]>} doc
- * @returns {{ doc: Record<string, string[]>, tagCount: number }}
- */
+/** 清洗 tags 文档:剔除空 tag、去重、url 字典序排序。
+ *  返回 { doc, tagCount };类型/长度非法抛错。 */
 export function sanitizeTagsDoc(doc) {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
     throw new Error('tags 文档必须是普通对象');
@@ -517,28 +396,20 @@ export function sanitizeTagsDoc(doc) {
     out[url] = cleaned;
     tagCount += cleaned.length;
   }
-  // url 字典序排序
   const sorted = {};
   for (const k of Object.keys(out).sort()) sorted[k] = out[k];
   return { doc: sorted, tagCount };
 }
 
-/**
- * 校验 Manager 发来的 tags 文档,失败抛错(含具体原因)。
- * sanitizeTagsDoc 之外的额外规则:不允许空文档直接覆盖清库(防误操作)。
- * @throws 若不合法
- */
+/** 校验 Manager 发来的 tags 文档;额外规则:空文档不许直接覆盖清库(防误操作) */
 export function validateTagsDoc(doc) {
-  const { doc: cleaned } = sanitizeTagsDoc(doc); // 复用清洗(含类型/长度校验)
+  const { doc: cleaned } = sanitizeTagsDoc(doc);
   if (Object.keys(cleaned).length === 0) {
     throw new Error('tags 文档为空 — 如需清空全部标签请手动编辑文件(防误操作)');
   }
 }
 
-/**
- * 读取 src/site/tags.ts。文件不存在返回空对象。
- * @returns {Promise<Record<string, string[]>>}
- */
+/** 读取 src/site/tags.ts;文件不存在返回空对象 */
 export async function readTags() {
   const viewerDir = getViewerDir();
   try {
@@ -550,10 +421,7 @@ export async function readTags() {
   }
 }
 
-/**
- * 把完整 tags 对象写回 src/site/tags.ts(覆盖)。
- * @param {Record<string, string[]>} doc
- */
+/** 覆盖写回 src/site/tags.ts(先清洗) */
 export async function writeTags(doc) {
   const { doc: cleaned, tagCount } = sanitizeTagsDoc(doc);
   const viewerDir = getViewerDir();
@@ -562,16 +430,9 @@ export async function writeTags(doc) {
   return { ok: true, imageCount: Object.keys(cleaned).length, tagCount };
 }
 
-/* ============================================================
- * 站点配置(config.ts)白名单写入
- * ------------------------------------------------------------
- * Manager 的「配置」Tab 只允许改版面/拉取相关字段;
- * mode / token / 字段映射等敏感或危险键一律拒改,
- * 且写回时保留原值(从现文件解析后合并,不会漂移)。
- *
- * ⚠ config.ts 由生成头 + JSON 字面量重写,手工注释会丢失
- *   (与 focalPoints/albums 的生成模式一致)。
- * ============================================================ */
+/* ---- 站点配置(config.ts)白名单写入 ----
+ * Manager 只允许改版面/拉取字段,mode/token 等敏感键拒改;
+ * 写回时从现文件解析后合并,不会漂移。 */
 
 /** 允许 Manager 修改的 CONFIG 字段 */
 export const CONFIG_WRITE_WHITELIST = [
@@ -599,15 +460,7 @@ const CONFIG_HEADER = `/* ======================================================
  * ============================================================ */
 `;
 
-/**
- * 校验 Manager 发来的 config patch,失败抛错(含具体原因)。
- * 规则:
- *   - 必须是普通对象且至少一个键
- *   - 只允许白名单键(mode/token 等一律拒绝)
- *   - rows: 1–6 整数;cardWidth: 180–560 整数;perPage: 1–200 整数
- *   - thumbWidth: 100–2000 整数或 null
- * @throws 若不合法
- */
+/** 校验 Manager 发来的 config patch:白名单键 + 范围校验,失败抛错 */
 export function validateConfigPatch(patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     throw new Error('config patch 必须是普通对象');
@@ -638,19 +491,12 @@ export function validateConfigPatch(patch) {
   }
 }
 
-/**
- * 白名单合并(纯函数):current 的全部字段保留,patch 覆盖白名单键。
- * @param {Object} current 从 config.ts 解析出的现值
- * @param {Object} patch    经过 validateConfigPatch 的增量
- */
+/** 白名单合并:current 全字段保留,patch 覆盖白名单键 */
 export function mergeConfigPatch(current, patch) {
   return Object.assign({}, current, patch);
 }
 
-/**
- * 把 patch 合并进现 CONFIG 并重写 src/site/config.ts。
- * @param {Object} patch 白名单增量
- */
+/** 合并 patch 并重写 src/site/config.ts */
 export async function writeConfig(patch) {
   validateConfigPatch(patch);
   const current = await readViewerConfig();

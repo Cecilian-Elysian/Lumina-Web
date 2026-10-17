@@ -30,11 +30,17 @@ jobs:
       # 不用 `|| npm install`:那会掩盖 lockfile 与 package.json 的漂移
       - run: npm ci
 
-      - name: Typecheck
-        run: npx vue-tsc --noEmit
+      - name: Typecheck (site + manager)
+        run: npm run typecheck
 
-      - name: Test
+      - name: Typecheck (functions)
+        run: npm run typecheck:functions
+
+      - name: Test (site + manager)
         run: npm test
+
+      - name: Test (tools)
+        run: npm --prefix tools test
 
       - name: Build
         run: npm run build

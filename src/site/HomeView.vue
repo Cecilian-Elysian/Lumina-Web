@@ -13,44 +13,28 @@ import {
 } from './wallTouch';
 
 /* ============================================================
- * 黑框 bug 修复说明:
- *   旧版在「首张图加载完」就克隆全部卡片做无缝循环,被克隆的
- *   大多是占位 GIF → 副本永远空白。现在:
- *     1. 先只渲染原图序列,等待全部 @load/@error 完成
- *     2. allLoaded 后才把每行数据双份渲染(displayRows)并加 .ready
- *   副本从诞生起就带真实 src,不再有黑框。
+ * 设计要点
+ * ------------------------------------------------------------
+ * 黑框修复:副本行必须带真实 src。先只渲染原图序列,等全部
+ * @load/@error 后才双份渲染(displayRows)并加 .ready ——
+ * 若在首张加载完就克隆,副本多为占位 GIF,永远空白。
  *
- * 内容轮换说明:
- *   - gallery 为固定顺序全量池,RowItem.gi 始终指向池下标 → 灯箱
- *     open(gallery) 的 ←/→ 导航始终正确。
- *   - 墙上只放一个「登台窗口」(wallRotate.windowSize 计算张数,约为
- *     池子的 60% 且不小于填满一屏所需);到点后滑动窗口换掉约一半
- *     图、并对每行重新洗牌 → 内容与顺序都焕新,不再原地打转。
- *   - 切换用「整墙按行错峰淡出 → 不可见时替换 → 淡入」遮蔽(wallRotate
- *     + styles/wall.css 的 .swapping);轨道 DOM 保留,滚动相位连续,无跳变。
- *   - 下一窗在「排计时」就定好(含整圈重洗后的池顺序),预热与兑现必然同
- *     一批图,换班新卡不会来不及淡入而闪一下。
- *   - 换班那半秒内忽略点击(池可能已重洗,画面上的旧 gi 会开错图)与 resize
- *     (避免与轮换并发两次换班)。
- *   - 开关/间隔来自设置;轮换在 开屏中/后台/拖拽中/已暂停/灯箱打开/
- *     动画关闭/系统要求减少动态效果 时不触发,交互结束重置计时器。
- *   - 窗口张数封顶 WINDOW_MAX(超大图库不必每次预热上百张)。
+ * 内容轮换:墙上只放一个「登台窗口」(windowSize,约池 60% 且
+ * 不小于填满一屏);到点整墙按行错峰淡出 → 不可见时替换 → 淡入
+ * (.swapping),轨道 DOM 保留、相位连续。下一窗在排计时时就定好
+ * 并预热,换班新卡不会来不及淡入。gallery 固定顺序,RowItem.gi
+ * 始终指向池下标 → 灯箱 ←/→ 导航始终正确。
  *
- * 设置响应式说明:
- *   行数/速度来自 useSettings()(localStorage),改行数时从当前窗口
- *   重建分桶,不重新请求;loadedUrls 按 url 键记录,重建后加载状态
- *   依然有效。卡片宽度走 <html> 上的 --card-w(settings.ts)。
+ * 轮换守卫:开屏中/后台/拖拽中/已暂停/灯箱/屏保/动画关闭/系统
+ * 减少动态效果 时不触发;换班半秒内忽略点击与 resize。
  *
- * 触屏手动说明(桌面不受影响):
- *   - 结构:.row > .row-drag(承接手动位移) > .row-track(CSS 动画)
- *     两层 transform 叠加,动画内核零改动。
- *   - 按住即暂停该行(.is-held);横向拖动拨动墙,位移以轨道宽度的
- *     50% 为周期归一化,永远落在无缝区间内。
- *   - 松手按末段速度惯性衰减(wallTouch.flingStep),松手后动画恢复。
- *   - 双击该行 = 持久暂停/继续(.is-paused);单击卡片仍开灯箱——
- *     触屏上延迟 280ms 开(双击暂停可取消它),桌面即时开;
- *     拖拽/双击手势会抑制紧随其后的合成 click(justDragged)。
- *   - 仅响应 touch 指针(桌面保留 :hover 暂停,见 styles/wall.css)。
+ * 触屏:.row > .row-drag(手动位移)> .row-track(CSS 动画),
+ * 两层 transform 叠加。按住暂停,拖动/惯性以轨道宽 50% 为周期
+ * 归一化;双击持久暂停;单击延迟 280ms 开灯箱(给双击留判定窗)。
+ * 仅响应 touch 指针,桌面保留 :hover 暂停(styles/wall.css)。
+ *
+ * 设置:行数/速度来自 useSettings();改行数从当前窗口重建分桶,
+ * 不重新请求,loadedUrls 按 url 键记录故状态保留。
  * ============================================================ */
 
 interface RowItem {
@@ -113,11 +97,8 @@ let disposed = false;
 /** 已发起预加载的 thumb(去重,避免重复 new Image) */
 const preloading = new Set<string>();
 
-/**
- * 一次「已排定」的轮换。在 scheduleRotate 时算好(含整圈重洗后的池顺序),
- * 到点直接兑现 —— 这样「预热的那一窗」与「实际换上来的那一窗」必然是同一
- * 批图,不会因重洗而预错。若不在排定时就兑现,新卡会来不及淡入而闪一下。
- */
+/** 一次「已排定」的轮换:排计时时就算好窗口与池顺序并预热,
+ *  到点直接兑现 → 预热与实际换上的必然是同一批图,新卡不闪。 */
 interface RotationPlan {
   /** 本次取出的池下标(读 pool 字段) */
   indices: number[];
@@ -182,12 +163,8 @@ const preloadImage = (url: string, markKey: string) => {
   im.src = url;
 };
 
-/**
- * 预热下一批要挂上墙的缩略图。
- * 只预热 thumb:模板也只请求 thumb(apiClient 不再产出 srcset 的 2x 原图
- * 候选),预热原图纯属浪费带宽。登记键统一用 img.url,与模板
- * loadedUrls.has(img.url) 对齐。
- */
+/** 预热下一批要挂上墙的缩略图。只暖 thumb(模板只请求 thumb),
+ *  登记键统一用 img.url,与模板 loadedUrls.has(img.url) 对齐。 */
 function preloadItems(items: RowItem[]): void {
   for (const it of items) preloadImage(it.img.thumb, it.img.url);
 }
