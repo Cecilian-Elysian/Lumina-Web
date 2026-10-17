@@ -21,13 +21,30 @@ export async function api<T = Record<string, unknown>>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const opt: RequestInit = { method, headers: {} };
+  const opt: RequestInit = {
+    method,
+    headers: {},
+    // 本地端点都是毫秒级;服务挂起时不能让 UI 永远等
+    signal: AbortSignal.timeout(10_000),
+  };
   if (body !== undefined) {
     (opt.headers as Record<string, string>)['Content-Type'] = 'application/json';
     opt.body = JSON.stringify(body);
   }
-  const r = await fetch(path, opt);
-  return (await r.json()) as T;
+  let r: Response;
+  try {
+    r = await fetch(path, opt);
+  } catch {
+    // 网络层失败:fetch 抛的 TypeError 毫无信息量,归一成可读错误
+    throw new Error('无法连接本地服务(请确认 serve.mjs 正在运行)');
+  }
+  const text = await r.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // 代理/网关返回了 HTML 错误页之类,原样 r.json() 会抛 SyntaxError
+    throw new Error(`本地服务返回非 JSON(HTTP ${r.status})`);
+  }
 }
 
 /* ── Toast 单例(App 渲染,任意组件调用) ── */
@@ -242,6 +259,23 @@ export async function loadImages(): Promise<{ list: MImage[]; usedFallback: bool
   return { list: rows, usedFallback };
 }
 
+/** 单飞版 loadImages:四个 Tab 因 v-show 同时挂载,各自的 fetchImages 会
+ *  并发发出 3 次相同的代理请求、弹 3 次同样的 toast —— 这里共享同一次
+ *  在飞请求,加载完成 toast 只弹一次。 */
+let imagesFlight: Promise<{ list: MImage[]; usedFallback: boolean }> | null = null;
+
+export function loadImagesShared(): Promise<{ list: MImage[]; usedFallback: boolean }> {
+  if (!imagesFlight) {
+    imagesFlight = loadImages()
+      .then((r) => {
+        toast(`已加载 ${r.list.length} 张图片`, 'success');
+        return r;
+      })
+      .finally(() => { imagesFlight = null; });
+  }
+  return imagesFlight;
+}
+
 /* ── 同步部署(git add/commit/push 指定文件) ── */
 
 export async function syncDeploy(file: string): Promise<string | null> {
@@ -300,26 +334,36 @@ export async function runAi(strategy: string, cb: AiCallbacks): Promise<void> {
     if (dataLines.length === 0) return;
     const dataRaw = dataLines.join('\n');
 
-    let data: { ok?: boolean; code?: string } = {};
+    // 服务端 log 事件发的是 JSON.stringify(文本),done 发的是 JSON 对象;
+    // log 直接展示 dataRaw 会带引号和转义符(\n 显示成字面量)
+    let data: unknown = null;
     try { data = JSON.parse(dataRaw); } catch { return; }
 
     if (event === 'log') {
-      cb.onLog(String(dataRaw));
-      const pm = String(dataRaw).match(/\[(\d+)\/(\d+)\]/);
+      const text = typeof data === 'string' ? data : dataRaw;
+      cb.onLog(text);
+      const pm = text.match(/\[(\d+)\/(\d+)\]/);
       if (pm && cb.onProgress) {
         cb.onProgress(Number(pm[1]), Number(pm[2]));
       }
     } else if (event === 'done') {
-      cb.onDone(!!data.ok, data.code);
+      const d = data as { ok?: boolean; code?: string };
+      cb.onDone(!!d.ok, d.code);
     }
   };
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const blocks = buf.split('\n\n');
-    buf = blocks.pop() ?? '';
-    for (const b of blocks) handleBlock(b);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const blocks = buf.split('\n\n');
+      buf = blocks.pop() ?? '';
+      for (const b of blocks) handleBlock(b);
+    }
+  } catch (e) {
+    // 流中途断掉(服务被关/网络抖动):不 toast 的话 UI 会永远停在「运行中」
+    toast('AI 任务流中断: ' + (e instanceof Error ? e.message : String(e)), 'error');
+    cb.onDone(false, 'stream_error');
   }
 }

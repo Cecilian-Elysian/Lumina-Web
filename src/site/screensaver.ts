@@ -140,6 +140,16 @@ export function hideScreensaver(): void {
     clearTimeout(timer);
     timer = null;
   }
+  // 闲置计时与其「补武装」一并清掉:退出后不允许残留自动进入,
+  // 下一次真实交互会重新武装(hide 可能发生在 rearmTimer 排队期间)
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  if (rearmTimer) {
+    clearTimeout(rearmTimer);
+    rearmTimer = null;
+  }
 }
 
 export function useScreensaver() {
@@ -162,8 +172,20 @@ const IDLE_EVENTS: Array<keyof WindowEventMap> = [
  *  注意清除旧计时器不受节流影响(节流只省重新排程),防残留误触发 */
 const RESET_THROTTLE_MS = 1000;
 let lastResetAt = Number.NEGATIVE_INFINITY;
+let rearmTimer: ReturnType<typeof setTimeout> | null = null;
 
 let initialized = false;
+
+/** (重新)武装闲置计时。幂等:已有计时则不动。 */
+function armIdleTimer(): void {
+  if (idleTimer) return;
+  const idleMin = useSettings().settings.value.screensaver.idleMin;
+  if (!idleMin || state.active.value || document.hidden) return;
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (!document.hidden && !state.active.value) void showScreensaver();
+  }, idleMin * 60_000);
+}
 
 function resetIdle(): void {
   if (idleTimer) {
@@ -171,15 +193,20 @@ function resetIdle(): void {
     idleTimer = null;
   }
   const now = performance.now();
-  if (now - lastResetAt < RESET_THROTTLE_MS) return;
+  if (now - lastResetAt < RESET_THROTTLE_MS) {
+    // 节流窗内不重排常驻计时,但排一个「窗末补武装」——否则交互风暴
+    // 的最后一次事件会把闲置计时清掉却不再补,之后用户彻底静止时
+    // 屏保永远不会触发(清了没补的裸奔状态)。
+    if (!rearmTimer) {
+      rearmTimer = setTimeout(() => {
+        rearmTimer = null;
+        armIdleTimer();
+      }, RESET_THROTTLE_MS);
+    }
+    return;
+  }
   lastResetAt = now;
-
-  const idleMin = useSettings().settings.value.screensaver.idleMin;
-  if (!idleMin || state.active.value || document.hidden) return;
-  idleTimer = setTimeout(() => {
-    idleTimer = null;
-    if (!document.hidden && !state.active.value) void showScreensaver();
-  }, idleMin * 60_000);
+  armIdleTimer();
 }
 
 /** 从后台回到可见:若仍空闲则重新武装闲置计时 */

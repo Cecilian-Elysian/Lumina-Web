@@ -50,15 +50,19 @@ async function onSaveAll() {
   });
   if (!ok) return;
   saving.value = true;
-  const saved = await saveAll();
-  saving.value = false;
-  if (saved.length > 0) toast(`已保存 ${saved.map((k) => FILE_LABELS[k]).join('、')}`, 'success');
+  try {
+    const saved = await saveAll();
+    if (saved.length > 0) toast(`已保存 ${saved.map((k) => FILE_LABELS[k]).join('、')}`, 'success');
+  } finally {
+    // 保存失败抛错也必须解锁按钮,否则「保存中…」永久卡死
+    saving.value = false;
+  }
 }
 
 async function onSaveDeploy() {
   if (saving.value || deploying.value) return;
   if (dirtyCount.value === 0) {
-    toast('没有待部署的改动(先编辑再保存)');
+    toast('没有待部署的改动(先编辑再保存)', 'warn');
     return;
   }
   const names = dirtyFiles.value.map((k) => FILE_LABELS[k]).join('、');
@@ -69,15 +73,18 @@ async function onSaveDeploy() {
   });
   if (!ok) return;
   deploying.value = true;
-  const saved = await saveAll();
-  let okCount = 0;
-  for (const key of saved as FileKey[]) {
-    const msg = await syncDeploy(fileOf(key));
-    if (!msg) break; // syncDeploy 内部已 toast 错误
-    okCount++;
+  try {
+    const saved = await saveAll();
+    let okCount = 0;
+    for (const key of saved as FileKey[]) {
+      const msg = await syncDeploy(fileOf(key));
+      if (!msg) break; // syncDeploy 内部已 toast 错误
+      okCount++;
+    }
+    if (okCount > 0) toast(`已部署 ${okCount} 个文件,Cloudflare Pages 将自动构建`, 'success');
+  } finally {
+    deploying.value = false;
   }
-  deploying.value = false;
-  if (okCount > 0) toast(`已部署 ${okCount} 个文件,Cloudflare Pages 将自动构建`, 'success');
 }
 </script>
 
@@ -130,10 +137,12 @@ async function onSaveDeploy() {
       </header>
 
       <main class="content">
-        <FocalTab v-show="activeTab === 'focal'" />
-        <AlbumTab v-show="activeTab === 'album'" />
-        <TagTab v-show="activeTab === 'tags'" />
-        <ConfigTab v-show="activeTab === 'config'" />
+        <!-- active prop:四个 Tab 因 v-show 同时挂载,Teleport 的顶栏按钮
+             必须只在自家 Tab 激活时渲染,否则四个 Tab 的按钮全部挤进顶栏 -->
+        <FocalTab :active="activeTab === 'focal'" v-show="activeTab === 'focal'" />
+        <AlbumTab :active="activeTab === 'album'" v-show="activeTab === 'album'" />
+        <TagTab :active="activeTab === 'tags'" v-show="activeTab === 'tags'" />
+        <ConfigTab :active="activeTab === 'config'" v-show="activeTab === 'config'" />
       </main>
     </div>
   </div>

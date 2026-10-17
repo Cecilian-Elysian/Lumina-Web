@@ -6,6 +6,9 @@ import {
 } from './api';
 import { registerSaver, setDirty } from './queue';
 
+/** App 同时挂载四个 Tab,只有 active 的才有资格把按钮 Teleport 到顶栏 */
+defineProps<{ active: boolean }>();
+
 /* ============================================================
  * 配置 Tab — 编辑 src/site/config.ts 的版面/拉取字段
  *   - 仅白名单字段可改(rows/cardWidth/perPage/thumbWidth)
@@ -87,7 +90,7 @@ onMounted(reload);
 
 <template>
   <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
-  <Teleport to="#bar-right">
+  <Teleport v-if="active" to="#bar-right">
     <button class="btn" :disabled="loading" @click="reload">↻ 重新读取</button>
   </Teleport>
 

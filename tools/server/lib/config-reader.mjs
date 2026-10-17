@@ -20,10 +20,11 @@ export function getViewerDir() {
 export function safeParseObject(raw, varName) {
   if (typeof raw !== 'string') throw new Error('safeParseObject: raw 必须是字符串');
 
-  const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+  // 注释不用预处理:acorn 解析时原生跳过。此前的 /* */ 剥除正则不区分
+  // 字符串内外,字符串里含 "/*" 的正常数据会被误删(静默丢数据)。
   let ast;
   try {
-    ast = parse(stripped, { ecmaVersion: 2022, sourceType: 'module' });
+    ast = parse(raw, { ecmaVersion: 2022, sourceType: 'module' });
   } catch (e) {
     throw new Error('acorn 解析失败: ' + e.message);
   }
@@ -98,7 +99,9 @@ function evalLiteral(node) {
   }
 
   if (node.type === 'ObjectExpression') {
-    const out = {};
+    // 无原型对象:数据文件的键来自文件内容,形如 "__proto__" 的键
+    // 在普通对象上会写到原型而不是自有属性(污染或静默丢失)
+    const out = Object.create(null);
     for (const prop of node.properties) {
       if (prop.type !== 'Property') {
         throw new Error('对象中不允许 SpreadElement / Method(纯字面量模式)');
@@ -243,12 +246,13 @@ export async function writeAlbums(doc) {
   const meta = Array.isArray(doc._meta) ? doc._meta.filter((a) => a && a.id && a.name) : [];
   const metaIds = new Set(meta.map((a) => a.id));
 
-  const map = {};
+  // 无原型对象:键来自 Manager 发来的 url,"__proto__" 之类的键不能落到原型上
+  const map = Object.create(null);
   for (const [k, v] of Object.entries(doc)) {
     if (k === '_meta') continue;
     if (typeof v === 'string' && metaIds.has(v)) map[k] = v;
   }
-  const sortedMap = {};
+  const sortedMap = Object.create(null);
   for (const k of Object.keys(map).sort()) sortedMap[k] = map[k];
 
   const out = { _meta: meta, ...sortedMap };
@@ -372,7 +376,8 @@ export function sanitizeTagsDoc(doc) {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
     throw new Error('tags 文档必须是普通对象');
   }
-  const out = {};
+  // 无原型对象:url 键来自 Manager 发来的请求体,防 "__proto__" 污染
+  const out = Object.create(null);
   let tagCount = 0;
   for (const [url, tags] of Object.entries(doc)) {
     if (typeof url !== 'string' || url.length === 0) {
@@ -396,7 +401,7 @@ export function sanitizeTagsDoc(doc) {
     out[url] = cleaned;
     tagCount += cleaned.length;
   }
-  const sorted = {};
+  const sorted = Object.create(null);
   for (const k of Object.keys(out).sort()) sorted[k] = out[k];
   return { doc: sorted, tagCount };
 }

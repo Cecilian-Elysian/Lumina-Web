@@ -3,9 +3,12 @@ import { ref, reactive, computed, watchEffect, onMounted } from 'vue';
 import type { TagsDoc } from '@/shared/types';
 import { fileName } from '@/shared/utils';
 import {
-  useManagerState, loadTags, saveTags, loadImages, toast,
+  useManagerState, loadTags, saveTags, loadImagesShared, toast,
 } from './api';
 import { registerSaver, setDirty } from './queue';
+
+/** App 同时挂载四个 Tab,只有 active 的才有资格把按钮 Teleport 到顶栏 */
+defineProps<{ active: boolean }>();
 
 /* ============================================================
  * 标签 Tab — 给每张图打标签,写入 src/site/tags.ts
@@ -116,12 +119,11 @@ const filteredImages = computed(() => {
     mergedTags(img.url).some((t) => t.toLowerCase().includes(q)));
 });
 
-/* ── 读取图片列表 ── */
+/* ── 读取图片列表(单飞共享:四个 Tab 同时挂载,只发一次代理请求) ── */
 async function fetchImages() {
-  const { list } = await loadImages();
+  const { list } = await loadImagesShared();
   state.images.value = list;
   state.imagesLoaded.value = true;
-  toast(`已加载 ${list.length} 张图片`, 'success');
 }
 
 /* ── 保存到 viewer(操作队列批量调用,无确认) ── */
@@ -154,7 +156,7 @@ function openInNewTab(url: string) {
 
 <template>
   <!-- 操作按钮(传送到顶栏;保存/部署统一走侧栏操作队列) -->
-  <Teleport to="#bar-right">
+  <Teleport v-if="active" to="#bar-right">
     <button class="btn" @click="fetchImages">↻ 读取图片列表</button>
   </Teleport>
 

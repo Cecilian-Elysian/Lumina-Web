@@ -13,7 +13,17 @@ const LS_ALBUM_KEY = 'lumina.album.local';
 
 function readAlbumOverrides(): Record<string, string | null> {
   try {
-    return JSON.parse(localStorage.getItem(LS_ALBUM_KEY) || '{}');
+    const raw: unknown = JSON.parse(localStorage.getItem(LS_ALBUM_KEY) || '{}');
+    // LS 是用户数据,可能是任何东西(旧版格式/手动改动/损坏):
+    // 只接受纯对象,键值只留 null(解除归属)与字符串,其余整体作废。
+    // 不设防的话 JSON.parse('null') 会让 Object.entries 直接抛 TypeError,
+    // 图集页整个白屏。
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+    const out: Record<string, string | null> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === null || typeof v === 'string') out[k] = v;
+    }
+    return out;
   } catch {
     return {};
   }

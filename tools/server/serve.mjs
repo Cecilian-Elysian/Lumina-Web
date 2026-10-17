@@ -278,7 +278,10 @@ async function fetchUpstreamImages(perPage) {
     }
 
     const baseUrl = CONFIG.apiBase + CONFIG.listPath + '?order=newest';
-    const requestPerPage = Math.min(40, perPage || CONFIG.perPage || 60);
+    // 拉取上限对齐生产 images.js 的 CALLER_MAX=500:per_page 决定「返回几张/页数」,
+    // 不受上游 last_page 任意放大(千张图 = 25 页,逐页全拉既慢又浪费图床配额)
+    const want = Math.min(500, Math.max(1, Number(perPage) || CONFIG.perPage || 60));
+    const requestPerPage = Math.min(40, want);
 
     // 第 1 页:必拉,用来探测 last_page / total
     const first = await getUpstreamPage(baseUrl, headers, 1, requestPerPage);
@@ -287,14 +290,15 @@ async function fetchUpstreamImages(perPage) {
     const total = Number(innerData.total) || items.length;
     const lastPage = Number(innerData.last_page) || 1;
 
-    // 单页就能装下 → 包装成图床原始三段式返回
+    // 单页就能装下 → 截到 want,包装成图床原始三段式返回
     if (lastPage <= 1) {
-      return wrapUpstream(items, innerData);
+      return wrapUpstream(items.slice(0, want), innerData);
     }
 
-    // 多页:并发拉剩余页 (page=2..lastPage)
+    // 多页:页数由 want 决定,并发拉剩余页 (page=2..pagesNeeded)
+    const pagesNeeded = Math.min(lastPage, Math.ceil(want / requestPerPage));
     const pages = [];
-    for (let p = 2; p <= lastPage; p++) pages.push(p);
+    for (let p = 2; p <= pagesNeeded; p++) pages.push(p);
     const settled = await Promise.allSettled(
       pages.map((p) => getUpstreamPage(baseUrl, headers, p, requestPerPage))
     );
@@ -312,8 +316,8 @@ async function fetchUpstreamImages(perPage) {
       }
     });
 
-    log('📄', `图床分页合并:共 ${total} 张 / ${lastPage} 页,成功 ${okCount + 1}/${lastPage},返回 ${items.length} 张`);
-    return wrapUpstream(items, innerData);
+    log('📄', `图床分页合并:共 ${total} 张 / ${lastPage} 页,成功 ${okCount + 1}/${pagesNeeded},返回 ${Math.min(items.length, want)} 张`);
+    return wrapUpstream(items.slice(0, want), innerData);
   } catch (e) {
     log('❌', `fetchUpstreamImages 失败: ${e.message}`);
     return null;

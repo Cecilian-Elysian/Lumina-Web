@@ -161,7 +161,12 @@ export function flushSettingsSave(): void {
 }
 
 if (typeof window !== 'undefined') {
+  // pagehide:移动端直接杀进程/切走时可能收不到;visibilitychange:hidden
+  // 是最后可靠时机(iOS Safari 上 tab 切后台只发这个)。两处都幂等 flush。
   window.addEventListener('pagehide', flushSettingsSave);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) flushSettingsSave();
+  });
 }
 
 export function useSettings() {
