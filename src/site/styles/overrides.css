@@ -1,0 +1,76 @@
+/* ============================================================
+ * Lumina 站点样式 — 全局覆盖(必须最后载入)
+ * ------------------------------------------------------------
+ * 响应式 / prefers-reduced-motion / 动画开关。
+ * 这里大量规则与各页文件同特异性(如 .wall.ready .row-track),
+ * 靠「后载入者胜」生效 —— main.ts 的载入顺序不可调整。
+ * ============================================================ */
+
+/* ============ 响应式 ============ */
+@media (max-width: 1100px) {
+  :root { --card-height: 190px; }
+  .navbar-title { font-size: 1.1rem; }
+
+  .gallery-hero { padding: 60px 40px 40px; }
+  .hero-title   { font-size: 3rem; }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --card-height: 140px;
+    --card-radius: 10px;
+    --row-gap: 10px;
+    --row-margin: 6px;
+  }
+  .navbar { padding: 13px 16px; }
+  .navbar-title { font-size: 1rem; }
+  .navbar-nav { gap: 16px; }
+  .navbar-link { font-size: 0.82rem; }
+
+  .gallery-hero { padding: 40px 16px 24px; }
+  .hero-title   { font-size: 2.2rem; }
+  .hero-subtitle { font-size: 0.85rem; }
+  .hero-search  { min-width: 0; width: 100%; }
+
+  .gallery-main { padding: 0 16px 40px; }
+  .gallery-grid { gap: 16px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .gallery-card img { height: 160px; }
+  .gallery-card-meta { padding: 12px 14px; }
+  .gallery-card-title { font-size: 0.95rem; }
+
+  .lb-btn { width: 40px; height: 40px; }
+  .lb-prev { left: 10px; }
+  .lb-next { right: 10px; }
+}
+
+/* ============ 无障碍 ============ */
+@media (prefers-reduced-motion: reduce) {
+  .row-track,
+  .wall.ready .row-track { animation: none; }
+  .card img,
+  .lb-btn { transition: none; }
+  .card img { opacity: 1; }
+}
+
+/* ============ 动画开关 ============ */
+html[data-anim='off'] .wall.ready .row-track { animation-play-state: paused; }
+
+/* ============ 响应式补充 ============ */
+@media (max-width: 768px) {
+  .settings-hero { padding: 40px 16px 24px; }
+  .settings-title { font-size: 2.2rem; }
+  .settings-subtitle { font-size: 0.85rem; }
+  .settings-main { padding: 0 16px 40px; gap: 20px; }
+  .settings-group { padding: 4px 16px; }
+  .setting-row { grid-template-columns: 84px 1fr 72px; gap: 10px; }
+
+  .hero-toolbar { flex-wrap: wrap; }
+
+  .masonry { columns: 2 140px; column-gap: 10px; }
+  .masonry-item { margin-bottom: 10px; }
+
+  .lb-tags { bottom: 52px; padding: 0 60px; }
+
+  .favs-head { flex-wrap: wrap; }
+  .favs-thumb { width: 104px; height: 70px; }
+}

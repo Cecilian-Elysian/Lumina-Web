@@ -5,10 +5,10 @@
  *   - settings 模块级单例(所有视图共享同一份,同 lbState 模式)
  *   - load/save + 逐字段校验(clamp):非法字段回退默认,合法字段保留
  *   - initSettings(): main.ts 挂载前调用一次,把设置应用到 <html>
- *       --card-w   → .card flex-basis(styles.css 已有 var 回退)
+ *       --card-w   → .card flex-basis(styles/wall.css 已有 var 回退)
  *       data-anim  → 关动画时置 'off'(CSS 暂停 .row-track 动画)
  *
- * 注意:theme 字段驱动深/浅主题(styles.css 的 :root[data-theme] 变量组)。
+ * 注意:theme 字段驱动深/浅主题(styles/base.css 的 :root[data-theme] 变量组)。
  *       screensaver 子对象由 screensaver.ts / ScreensaverOverlay.vue 消费,
  *       纯组件驱动,不写 <html> 属性。
  * ============================================================ */

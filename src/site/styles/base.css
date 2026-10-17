@@ -1,0 +1,297 @@
+/* ============================================================
+ * Lumina 站点样式 — 基础层(全局)
+ * ------------------------------------------------------------
+ * 载入顺序: base → wall → gallery → lightbox → settings → overrides
+ * (见 main.ts;顺序即级联优先级,overrides 必须最后载入)
+ * 内容: 主题变量 / 基础重置 / 导航·页脚·错误横条 / 404 页
+ * ============================================================ */
+
+/* ============ CSS 变量 ============ */
+:root {
+  --bg-start:   #14161a;
+  --bg-end:     #1a1d22;
+  --text-main:  #e6e8eb;
+  --text-sub:   #9aa1ab;
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+
+  --card-height: 230px;
+  --card-radius: 14px;
+  --row-gap:    16px;
+  --row-margin: 10px;
+
+  --border: #2c3038;
+
+  /* 玻璃拟态面 / 导航 / 图片加载底 — 浅色主题在下方 :root[data-theme='light'] 覆盖 */
+  --nav-bg:     rgba(24, 26, 31, 0.8);
+  --nav-link:   rgba(255, 255, 255, 0.75);
+  --glass-bg:   rgba(255, 255, 255, 0.065);
+  --chip-bg:    rgba(255, 255, 255, 0.14);
+  --chip-bg-hover: rgba(255, 255, 255, 0.26);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-strong: rgba(255, 255, 255, 0.3);
+  --img-bg:     #23262c;
+
+  /* 阴影/文字投影 — 浅色主题下柔化或去除 */
+  --nav-shadow:     0 6px 20px rgba(0, 0, 0, 0.35);
+  --title-shadow:   0 2px 12px rgba(0, 0, 0, 0.5);
+  --nav-link-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --hover-shadow:   0 18px 40px rgba(0, 0, 0, 0.5);
+  --hover-shadow-sm: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  --brand-1: #ff4d6d;
+  --brand-2: #ff9f40;
+  --brand-deep: #c9184a;
+}
+
+/* 浅色主题(settings.ts 写 html[data-theme='light'];默认深色无需覆盖)
+   玻璃面在浅底上不可见,改用暗透明 */
+:root[data-theme='light'] {
+  --bg-start:   #f6f7f9;
+  --bg-end:     #eceef3;
+  --text-main:  #24272d;
+  --text-sub:   #6a7280;
+  --card-shadow: 0 10px 30px rgba(31, 35, 45, 0.14);
+  --border:     #d8dce3;
+
+  --nav-bg:     rgba(255, 255, 255, 0.78);
+  --nav-link:   rgba(15, 23, 42, 0.65);
+  --glass-bg:   rgba(15, 23, 42, 0.045);
+  --chip-bg:    rgba(15, 23, 42, 0.08);
+  --chip-bg-hover: rgba(15, 23, 42, 0.16);
+  --glass-border: rgba(15, 23, 42, 0.12);
+  --glass-border-strong: rgba(15, 23, 42, 0.3);
+  --img-bg:     #e3e6ea;
+
+  --nav-shadow:     0 6px 20px rgba(31, 35, 45, 0.08);
+  --title-shadow:   none;
+  --nav-link-shadow: none;
+  --hover-shadow:   0 18px 40px rgba(31, 35, 45, 0.22);
+  --hover-shadow-sm: 0 12px 32px rgba(31, 35, 45, 0.18);
+}
+
+/* ============ 基础重置 ============ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               sans-serif;
+  color: var(--text-main);
+  background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%)
+              fixed;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.hidden { display: none; }
+
+/* ============ 导航栏 / 页脚 / 错误横条 ============ */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 60px;
+  padding: 0 40px;
+  background: var(--nav-bg);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: var(--nav-shadow);
+}
+
+.navbar-title {
+  color: var(--text-main);
+  font-size: 1.4rem;
+  font-weight: 800;
+  font-style: oblique 12deg;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 14px rgba(255, 77, 109, 0.4);
+}
+
+.navbar-nav {
+  display: flex;
+  gap: 24px;
+}
+
+.navbar-link {
+  position: relative;
+  color: var(--nav-link);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  transition: color 0.2s ease;
+  text-shadow: var(--nav-link-shadow);
+}
+
+.navbar-link::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -7px;
+  height: 2px;
+  background: var(--text-main);
+  transform: scaleX(0);
+  transition: transform 0.2s ease;
+}
+
+.navbar-link:hover,
+.navbar-link.active {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.navbar-link:hover::after,
+.navbar-link.active::after {
+  transform: scaleX(1);
+}
+
+.site-footer {
+  text-align: center;
+  padding: 28px 20px 36px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-sub);
+}
+
+/* 页脚胶囊:GitHub 链接 + 访客统计(未启用 D1 时自动只剩链接) */
+.footer-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 22px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.site-footer a.footer-link {
+  color: var(--text-sub);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.site-footer a.footer-link:hover {
+  color: var(--text-main);
+  text-decoration: underline;
+}
+
+.footer-dot {
+  color: var(--text-sub);
+  opacity: 0.55;
+}
+
+.footer-stats {
+  position: relative;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  cursor: default;
+}
+
+/* 悬浮提示:今日数据(纯 CSS,悬停/键盘聚焦显示) */
+.footer-tip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  white-space: nowrap;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--nav-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--nav-shadow);
+  color: var(--text-sub);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.footer-stats:hover .footer-tip,
+.footer-stats:focus-within .footer-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.error-banner {
+  position: sticky;
+  top: 60px;
+  z-index: 49;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: rgba(180, 30, 50, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: opacity 0.4s ease;
+}
+.error-banner-msg { flex: 1; }
+.error-banner-close {
+  background: none;
+  border: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.error-banner-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+.error-banner.is-fading { opacity: 0; }
+
+/* ============ 404 页 ============ */
+.site-header {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.site-title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: 0.05em;
+}
+
+.site-subtitle {
+  color: var(--text-sub);
+  font-size: 1rem;
+}
+
+.site-subtitle a {
+  color: var(--brand-1);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.site-subtitle a:hover {
+  color: var(--brand-deep);
+  text-decoration: underline;
+}

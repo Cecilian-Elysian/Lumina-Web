@@ -27,7 +27,7 @@ import {
  *     池子的 60% 且不小于填满一屏所需);到点后滑动窗口换掉约一半
  *     图、并对每行重新洗牌 → 内容与顺序都焕新,不再原地打转。
  *   - 切换用「整墙按行错峰淡出 → 不可见时替换 → 淡入」遮蔽(wallRotate
- *     + styles.css 的 .swapping);轨道 DOM 保留,滚动相位连续,无跳变。
+ *     + styles/wall.css 的 .swapping);轨道 DOM 保留,滚动相位连续,无跳变。
  *   - 下一窗在「排计时」就定好(含整圈重洗后的池顺序),预热与兑现必然同
  *     一批图,换班新卡不会来不及淡入而闪一下。
  *   - 换班那半秒内忽略点击(池可能已重洗,画面上的旧 gi 会开错图)与 resize
@@ -50,7 +50,7 @@ import {
  *   - 双击该行 = 持久暂停/继续(.is-paused);单击卡片仍开灯箱——
  *     触屏上延迟 280ms 开(双击暂停可取消它),桌面即时开;
  *     拖拽/双击手势会抑制紧随其后的合成 click(justDragged)。
- *   - 仅响应 touch 指针(桌面保留 :hover 暂停,见 styles.css)。
+ *   - 仅响应 touch 指针(桌面保留 :hover 暂停,见 styles/wall.css)。
  * ============================================================ */
 
 interface RowItem {
@@ -59,7 +59,7 @@ interface RowItem {
   gi: number;
 }
 
-/** 卡片间横向间距(与 styles.css --row-gap 一致,窗口宽度估算用) */
+/** 卡片间横向间距(与 styles/wall.css 的 --row-gap 一致,窗口宽度估算用) */
 const ROW_GAP = 16;
 /** 换班淡出/淡入时长(与 CSS .row-track transition 一致) */
 const FADE_MS = 400;

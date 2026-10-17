@@ -1,0 +1,114 @@
+/* ============================================================
+ * Lumina 站点样式 — 图片墙(主页流动墙)
+ * 行 + 轨道 + 无缝滚动 + 卡片加载态淡入
+ * ============================================================ */
+
+/* ============ 图片墙 ============ */
+.wall {
+  flex: 1;
+  padding-top: 25px;
+}
+
+.wall-loading {
+  text-align: center;
+  color: var(--text-sub);
+  padding: 120px 0;
+  letter-spacing: 0.3em;
+}
+
+.row {
+  overflow: hidden;
+  padding: var(--row-margin) 0;
+  /* 纵向滚动手势仍归浏览器,横向手势交给行拖拽(pointer events) */
+  touch-action: pan-y;
+}
+
+/* 手动位移层 .row-drag:触屏拖动/惯性叠加在 CSS 动画之上(两层 transform 互不干扰)。
+   它本身不写任何 CSS —— 位移由模板内联 style 给出。
+   ⚠ 切勿在这里加 will-change:真正被动画的是 .row-track,
+     挂在这个静止包裹层上会让浏览器白白提升一个不动层,3 行变 6 个嵌套合成层。 */
+
+.row-track {
+  display: flex;
+  flex: none;
+  width: max-content;
+  will-change: transform;
+  /* 只过渡 opacity:与 HomeView 的 FADE_MS=400ms 对齐,
+     配合 trackStyle() 注入的 transitionDelay 做逐行错峰。
+     缺失此行会让 .swapping 变成硬切,且换班期白屏不可点。 */
+  transition: opacity 400ms ease;
+}
+
+/* 行内离屏卡片跳过绘制与布局:每行轨道可达上万像素宽,
+   而任一时刻可见的只有十来个。 */
+.row-track .card {
+  content-visibility: auto;
+  contain-intrinsic-size: 300px 230px;
+}
+
+.wall.ready .row-track {
+  animation: lumina-scroll 40s linear infinite;
+}
+
+/* 内容轮换:整墙按行错峰淡出,在不可见时替换内容,再淡入 */
+.wall.swapping .row-track {
+  opacity: 0;
+  /* 淡出期间不可命中:opacity:0 不会禁用指针事件,
+     否则会点到不可见的旧卡片(池顺序可能已重洗) */
+  pointer-events: none;
+}
+
+.row-track .card { margin-right: var(--row-gap); }
+
+@keyframes lumina-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* 触屏:按住中(.is-held)/ 双击暂停(.is-paused) */
+.row.is-held .row-track,
+.row.is-paused .row-track { animation-play-state: paused; }
+
+/* 桌面悬停暂停:限定支持 hover 的指针设备,
+   规避触屏 :hover 粘滞(点一下永久暂停)的问题 */
+@media (hover: hover) {
+  .row:hover .row-track { animation-play-state: paused; }
+}
+
+/* ============ 卡片与加载态 ============ */
+.card {
+  flex: 0 0 var(--card-w, 300px);
+  cursor: pointer;
+  /* 占位底挂在 .card 上而不是 img:
+     img 加载态是 opacity:0,会把自身的 background 一起藏掉,
+     挂在父级才能在图片到达前显示灰色相框 */
+  background: var(--img-bg);
+  border-radius: var(--card-radius);
+  /* 不加 overflow:hidden —— 悬停时 img 上移 6px 会被裁掉 */
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.35s ease;
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  height: var(--card-height);
+  object-fit: cover;
+  border-radius: var(--card-radius);
+  /* 焦点位置: 模板 :style 注入 --focal-x/y(键=原图 url),
+     无数据时回退居中偏上(适合多数人像构图) */
+  object-position: var(--focal-x, 50%) var(--focal-y, 25%);
+  transition: transform 0.35s ease, opacity 0.4s ease;
+
+  /* 加载态: 未就绪时透明,灰色占位底由 .card 透出;就绪后淡入 */
+  opacity: 0;
+}
+.card img.is-loaded { opacity: 1; }
+
+.card:hover img {
+  transform: translateY(-6px);
+}
+/* 阴影已移到 .card(占位底需要),悬停阴影跟着卡片走 */
+.card:hover {
+  box-shadow: var(--hover-shadow);
+}

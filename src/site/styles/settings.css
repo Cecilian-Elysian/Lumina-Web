@@ -1,0 +1,274 @@
+/* ============================================================
+ * Lumina 站点样式 — 设置页
+ * 滑杆 / 开关 / 预览轨道 / 「我的收藏」区块
+ * ============================================================ */
+
+/* ============ 设置页 ============ */
+.settings-hero {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 80px 60px 48px;
+}
+
+.settings-title {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+  text-shadow: var(--title-shadow);
+}
+
+.settings-subtitle {
+  margin-top: 12px;
+  color: var(--text-sub);
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.settings-main {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 60px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-group {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--card-radius);
+  padding: 8px 24px;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 88px;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0;
+}
+.setting-row + .setting-row { border-top: 1px solid var(--glass-border); }
+
+.setting-label {
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0.04em;
+}
+
+.setting-value {
+  text-align: right;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-row input[type='range'] {
+  width: 100%;
+  accent-color: var(--brand-1);
+  cursor: pointer;
+}
+
+/* 拨动开关 */
+.toggle {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  cursor: pointer;
+  justify-self: end;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+.toggle.on {
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+  border-color: transparent;
+}
+.toggle.on::after { transform: translateX(24px); }
+
+/* 预览轨道 */
+.settings-preview {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--card-radius);
+  padding: 20px;
+  overflow: hidden;
+}
+
+.preview-track {
+  display: flex;
+  width: max-content;
+  animation: preview-scroll 12s linear infinite;
+}
+
+@keyframes preview-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.preview-card {
+  flex: 0 0 var(--card-w, 300px);
+  height: var(--card-height);
+  margin-right: var(--row-gap, 16px);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  background:
+    linear-gradient(135deg, rgba(255, 77, 109, 0.35), rgba(255, 159, 64, 0.35)),
+    var(--img-bg);
+}
+
+.preview-note {
+  margin-top: 14px;
+  color: var(--text-sub);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-reset {
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.settings-reset:hover {
+  background: var(--chip-bg);
+  border-color: var(--glass-border-strong);
+}
+.settings-reset:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+
+.settings-hint {
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.settings-hint.show { opacity: 1; }
+
+/* ============ 收藏 ============ */
+/* 设置页「我的收藏」区块 */
+.favs-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+}
+
+.favs-count {
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.favs-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.favs-btn {
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.favs-btn:hover {
+  background: var(--chip-bg);
+  border-color: var(--glass-border-strong);
+}
+.favs-btn:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+.favs-btn.danger:hover {
+  border-color: rgba(255, 77, 109, 0.55);
+  color: var(--brand-1);
+}
+.favs-btn.enter {
+  justify-self: start;
+}
+
+.favs-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 0 18px;
+  scrollbar-width: thin;
+}
+
+.favs-thumb {
+  flex: 0 0 auto;
+  width: 120px;
+  height: 80px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--img-bg);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+.favs-thumb:hover {
+  border-color: var(--glass-border-strong);
+  transform: translateY(-2px);
+}
+.favs-thumb:focus-visible {
+  outline: 2px solid var(--brand-deep, #c9184a);
+  outline-offset: 2px;
+}
+.favs-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 焦点位置: 模板 :style 注入 --focal-x/y(复用焦点数据,缩略图同样防裁脸) */
+  object-position: var(--focal-x, 50%) var(--focal-y, 25%);
+  display: block;
+}
+
+.favs-empty {
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  padding: 4px 0 18px;
+}
+
+/* 分段按钮(设置页屏保行的多选项):允许换行,避免窄屏溢出 */
+.view-switch.wrap { flex-wrap: wrap; border-radius: 18px; }
+.view-switch.wrap button { flex: 0 0 auto; }
