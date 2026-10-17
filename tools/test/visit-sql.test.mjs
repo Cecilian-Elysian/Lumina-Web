@@ -21,13 +21,21 @@ import { readFileSync } from 'node:fs';
 
 // Vite 5 的内置模块清单里没有 node:sqlite,直接 import 会被解析失败;
 // createRequire 绕过 Vite 的 import 分析,拿到真正的 Node 内置模块。
+// node:sqlite 需要 Node ≥22.5;老环境缺模块时跳过本套件而不是让整个
+// 测试进程加载失败(CI 的 node 版本由 ci.yml 保证)。
 const require = createRequire(import.meta.url);
-const { DatabaseSync } = require('node:sqlite');
+let DatabaseSync;
+try {
+  DatabaseSync = require('node:sqlite').DatabaseSync;
+} catch {
+  DatabaseSync = null;
+}
 
 const DAY = '2026-10-17';
 
 let db;
 beforeAll(() => {
+  if (!DatabaseSync) return;
   db = new DatabaseSync(':memory:');
   // 直接用项目真实的 schema.sql,避免测试与线上表结构漂移
   db.exec(readFileSync(new URL('../../schema.sql', import.meta.url), 'utf8'));
@@ -50,7 +58,10 @@ function stats(day) {
     || { pv: 0, uv: 0 };
 }
 
-describe('visit 写入的真实 SQL 语义', () => {
+/* 缺 node:sqlite 的环境(如 Node <22.5)整组跳过,不产生假失败 */
+const suite = DatabaseSync ? describe : describe.skip;
+
+suite('visit 写入的真实 SQL 语义', () => {
   it('新访客:PV+1 且 UV+1', () => {
     record(DAY, 'vid-A');
     expect(stats(DAY)).toEqual({ pv: 1, uv: 1 });
@@ -84,7 +95,7 @@ describe('visit 写入的真实 SQL 语义', () => {
   });
 });
 
-describe('为什么必须是单个 batch(原实现的风险)', () => {
+suite('为什么必须是单个 batch(原实现的风险)', () => {
   it('原实现:指纹写成功、聚合计数写失败 → 该访客 UV 永久丢失', () => {
     const d = '2026-10-20';
     // 原实现的两个独立语句;这里只跑第一条,模拟第二条失败

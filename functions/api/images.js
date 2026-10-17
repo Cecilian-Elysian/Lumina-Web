@@ -20,8 +20,10 @@
  *    都把上游重新拉一遍（1000 张图 = 25 次带 token 的请求/访客/页面）。
  *    注意：Cloudflare 不支持 cache.put 的 stale-while-revalidate /
  *    stale-if-error，需要「边喂旧值」得自己存两份 key，这里不这么做。
- *    另注意：只设 Cache-Control 响应头【不会】产生边缘缓存，
- *    那是浏览器缓存；边缘缓存必须显式 cache.put。
+ *    TTL 由入缓存副本的 Cache-Control max-age 控制；只给调用方响应设
+ *    Cache-Control 不会产生边缘缓存,那是浏览器缓存。
+ *    另注意：缓存里存的是【全量目录】(不按 per_page 截断),命中时才切片,
+ *    且缓存量不够本次请求时会回源补拉 —— 防小请求污染缓存。
  *
  * 3. 每个上游请求都有超时
  *    Workers 对单条子请求没有墙钟上限（只要客户端还连着）。
@@ -61,12 +63,12 @@ export async function onRequest(context) {
 
   const perPage = clampInt(new URL(request.url).searchParams.get('per_page'), 1, CALLER_MAX, CALLER_MAX);
 
-  // ---- 边缘缓存命中则直接返回 ----
+  // ---- 边缘缓存命中则直接返回（不足量时视为未命中回源补齐）----
   const cache = caches.default;
   const cached = await cache.match(CACHE_KEY);
   if (cached) {
-    const body = await sliceToLimit(cached, perPage);
-    if (body) return withBrowserCache(body, cached.headers.get('x-lumina-hit') ? 300 : 60);
+    const body = await sliceFromCache(cached, perPage);
+    if (body) return withBrowserCache(body);
   }
 
   const headers = {
@@ -117,13 +119,17 @@ export async function onRequest(context) {
 
     const payload = wrapUpstream(items, innerData, { total, pagesNeeded, failedPages, truncated: total > items.length });
 
-    const res = json(200, payload);
-    // 只有成功结果进缓存；带 failed_pages 的半份数据不缓存
+    // 只有成功结果进缓存；带 failed_pages 的半份数据不缓存。
+    // 缓存里存【未截断的全量目录】：后续不同 per_page 的请求都从这一份切片。
+    // TTL 用响应头控制（CF 的 cache.put 会尊重 Cache-Control 的 max-age/s-maxage），
+    // 与发给浏览器的 60s 短缓存互不影响。
     if (failedPages.length === 0) {
-      res.headers.set('X-Lumina-Hit', 'miss');
-      await cache.put(CACHE_KEY, res.clone());
+      const catalog = json(200, payload);
+      catalog.headers.set('Cache-Control', `public, max-age=${CACHE_TTL_SECONDS}`);
+      await cache.put(CACHE_KEY, catalog);
     }
-    return withBrowserCache(res, 60);
+    // 调用方拿到的按本次 per_page 截断（目录层的 total/failed_pages 原样保留）
+    return withBrowserCache(slicePayload(payload, perPage));
   } catch (err) {
     return networkError(err);
   }
@@ -196,27 +202,50 @@ function json(status, obj, headers) {
   });
 }
 
-/** 浏览器缓存:边缘已有 5 分钟,这里只做同页刷新去重 */
-function withBrowserCache(res, maxAge) {
-  res.headers.set('Cache-Control', `public, max-age=${maxAge}`);
+/** 浏览器缓存:短 TTL,只做同页刷新去重;边缘那份由入缓存的目录副本另行控时 */
+function withBrowserCache(res) {
+  res.headers.set('Cache-Control', 'public, max-age=60');
   return res;
 }
 
-/** 命中边缘缓存时按本次 ?per_page 截断（缓存里存的是完整清单） */
-async function sliceToLimit(res, perPage) {
+/**
+ * 命中边缘缓存时按本次 ?per_page 截断（缓存里存的是完整目录）。
+ * 兼做「够不够」检查：缓存条目比本次要的少、且上游 total 更大 → 返回 null,
+ * 调用方把它当未命中回源补拉。否则一个小 per_page 的请求会先污染缓存,
+ * 让后续所有大 per_page 的请求都拿不全。
+ */
+async function sliceFromCache(res, perPage) {
   try {
     const payload = await res.clone().json();
-    const items = (payload.data && payload.data.data) || [];
+    const data = (payload && payload.data) || {};
+    const items = data.data;
     if (!Array.isArray(items)) return null;
-    if (items.length <= perPage) return res;
-    return json(200, {
-      status: true,
-      message: payload.message,
-      data: Object.assign({}, payload.data, { data: items.slice(0, perPage), per_page: perPage }),
-    });
+    const total = Number(data.total) || items.length;
+    if (items.length < perPage && total > items.length) return null;
+    return slicePayload(payload, perPage);
   } catch {
     return null;
   }
+}
+
+/** 把完整目录 payload 切到 per_page 张（只影响本次响应,缓存里的目录不动） */
+function slicePayload(payload, perPage) {
+  const items = (payload.data && payload.data.data) || [];
+  if (!Array.isArray(items) || items.length <= perPage) {
+    return json(200, payload);
+  }
+  return json(200, {
+    status: true,
+    message: payload.message,
+    data: Object.assign({}, payload.data, {
+      data: items.slice(0, perPage),
+      returned: perPage,
+      per_page: perPage,
+      // 目录的 truncated 描述「上游目录是否拉全」;切片后对调用方而言,
+      // 「这次响应少于 total」才是有意义的事实,故按本次响应重算
+      truncated: (Number(payload.data && payload.data.total) || items.length) > perPage,
+    }),
+  });
 }
 
 function clampInt(raw, min, max, fallback) {

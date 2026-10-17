@@ -546,6 +546,33 @@ async function syncDataFile(filePath) {
 }
 
 // ── 路由处理 ─────────────────────────────────────
+
+/* ---- 门禁:只服务本机浏览器 ----
+ * 只监听 127.0.0.1 并不等于安全:别的网页发起的请求照样能到达本机端口。
+ *  - Host 校验:防 DNS rebinding(攻击者域名解析到 127.0.0.1 后,请求的
+ *    Host 是攻击者的域,与白名单不符即拒,顺带拿到读响应的能力)。
+ *  - Origin 校验:防 drive-by CSRF。恶意网页可以用「简单请求」(text/plain
+ *    的 POST,不触发 CORS 预检)打到本机 API —— CORS 只能拦「读响应」,
+ *    拦不住「动作已发生」,所以必须在服务端拒绝动作本身。 */
+let listeningPort = PREFERRED_PORT;
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
+
+function isLocalRequest(req) {
+  const h = String(req.headers.host || '');
+  const idx = h.lastIndexOf(':');
+  const host = idx > 0 ? h.slice(0, idx) : h;
+  const port = idx > 0 ? h.slice(idx + 1) : '';
+  if (!LOCAL_HOSTS.has(host) || String(listeningPort) !== port) return false;
+  const origin = req.headers.origin;
+  if (origin == null) return true; // 同源导航/GET 请求通常不带 Origin
+  try {
+    const o = new URL(String(origin));
+    return LOCAL_HOSTS.has(o.hostname) && o.port === String(listeningPort);
+  } catch {
+    return false;
+  }
+}
+
 async function handle(req, res, url) {
   const pathname = url.pathname;
 
@@ -795,6 +822,12 @@ async function handle(req, res, url) {
 
 // ── 创建服务器 ───────────────────────────────────
 const server = http.createServer(async (req, res) => {
+  if (!isLocalRequest(req)) {
+    log('🚫', `已拒绝非本机请求: Host=${req.headers.host || '(空)'} Origin=${req.headers.origin || '(无)'} ${req.url}`);
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Forbidden: Lumina editor only accepts local requests.');
+    return;
+  }
   const url = new URL(req.url, `http://127.0.0.1:${PREFERRED_PORT}`);
   try {
     await handle(req, res, url);
@@ -812,6 +845,7 @@ async function bootstrap() {
   await ensureDeps();
 
   const port = await findFreePort();
+  listeningPort = port;
   const url = `http://127.0.0.1:${port}/manager/`;
   await writePortFile(port);
 

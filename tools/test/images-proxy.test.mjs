@@ -118,16 +118,44 @@ describe('functions/api/images — 分页扇出', () => {
     expect((await res.json()).data.data).toHaveLength(12);
   });
 
-  it('多页 → 内部固定每页 40,并按 ceil(perPage/40) 取够页数', async () => {
-    const { calls } = install({ total: 1000 });
+  it('多页 → 内部固定每页 40,响应按 per_page 截断,缓存仍存全量目录', async () => {
+    const { calls, cacheHits } = install({ total: 1000 });
     const res = await imagesHandler({ request: req('https://lumina.test/api/images?per_page=100'), env: ENV });
     expect(calls.map((c) => c.page)).toEqual([1, 2, 3]);
     expect(calls.every((c) => c.per_page === 40)).toBe(true);
     const body = await res.json();
-    expect(body.data.data).toHaveLength(120); // 3 页 × 40
-    expect(body.data.total).toBe(1000);      // 真实值,不是 items.length
-    expect(body.data.returned).toBe(120);
+    expect(body.data.data).toHaveLength(100);  // 拉了 120 张,但只回给调用方 100 张
+    expect(body.data.total).toBe(1000);        // 真实值,不是 items.length
+    expect(body.data.returned).toBe(100);
     expect(body.data.truncated).toBe(true);
+    expect(cacheHits.put).toBe(1);             // 全量目录(120 张)入缓存
+  });
+
+  it('冷缓存小 per_page:只回 1 张,但缓存存全量页(后续大 per_page 直接切片命中)', async () => {
+    const { calls, cacheHits } = install({ total: 30 }); // 一页(40)装得下
+    const r1 = await imagesHandler({ request: req('https://lumina.test/api/images?per_page=1'), env: ENV });
+    expect((await r1.json()).data.data).toHaveLength(1);
+    expect(cacheHits.put).toBe(1); // 缓存的是 30 张全量页,不是 1 张
+    const after = calls.length;
+
+    const r2 = await imagesHandler({ request: req('https://lumina.test/api/images?per_page=20'), env: ENV });
+    const b2 = await r2.json();
+    expect(b2.data.data).toHaveLength(20); // 缓存 30 张足够 → 切片即可
+    expect(calls.length).toBe(after);      // 不回源
+    expect(b2.data.truncated).toBe(true);  // total 30 > 20,如实标注
+  });
+
+  it('缓存目录不足且上游还有更多 → 视为未命中回源补齐(防小请求污染缓存)', async () => {
+    const { calls } = install({ total: 1000 });
+    // 先让 per_page=1 污染缓存(只会拉 1 页 = 40 张)
+    await imagesHandler({ request: req('https://lumina.test/api/images?per_page=1'), env: ENV });
+    const after = calls.length;
+
+    const r2 = await imagesHandler({ request: req('https://lumina.test/api/images?per_page=200'), env: ENV });
+    const b2 = await r2.json();
+    expect(b2.data.data).toHaveLength(200); // 40 张不够 → 回源补拉 5 页
+    expect(calls.length).toBe(after + 5);
+    expect(b2.data.truncated).toBe(true);
   });
 
   it('并发不超过 Workers 的 6 条上限', async () => {

@@ -171,7 +171,10 @@ function preloadItems(items: RowItem[]): void {
 
 /** 错峰淡出 → 不可见时替换内容 → 淡入(轨道 DOM 保留,滚动相位连续) */
 async function swapTo(items: RowItem[]): Promise<void> {
-  if (disposed || items.length === 0) return;
+  // swapping 兼作互斥标志:上一次换班还在淡出/写回时,定时轮换与
+  // resize 重排绝不能并发进 —— 否则两个 windowItems 交错写回,
+  // rows 与窗口内容错位,滚动位置映射到错误的图。
+  if (disposed || swapping.value || items.length === 0) return;
   swapping.value = true;
   const waitMs = FADE_MS + ROW_STAGGER_MS * Math.max(0, rows.value.length - 1) + 40;
   await new Promise<void>((r) => setTimeout(r, waitMs));
@@ -200,6 +203,7 @@ function canRotate(): boolean {
     && !active
     && heldRows.value.size === 0
     && pausedRows.value.size === 0
+    && !swapping.value
     && !lightboxIsOpen()
     && !isScreensaverActive();
 }
