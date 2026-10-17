@@ -18,5 +18,13 @@
     },
     "types": ["vite/client", "node"]
   },
+  /* ★ strictTemplates:模板里用到但没 import 的组件直接报类型错。
+   *   2026-10 事故:d98a6f2 重写 App.vue 的 import 块时误删了
+   *   Lightbox / ScreensaverOverlay 的 import,模板照旧渲染它们 →
+   *   生产构建 resolveComponent 兜底成未知元素,静默失效,
+   *   而 vue-tsc 全绿(默认不校验未注册组件)。这道开关就是为此加的。 */
+  "vueCompilerOptions": {
+    "strictTemplates": true
+  },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"]
 }

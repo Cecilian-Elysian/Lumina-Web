@@ -5,6 +5,8 @@ import { useErrorBanner } from './composables';
 import { useVisit } from './visit';
 import { initScreensaver } from './screensaver';
 import { formatInt } from '@/shared/utils';
+import Lightbox from './Lightbox.vue';
+import ScreensaverOverlay from './ScreensaverOverlay.vue';
 
 /** 入口 HTML 内联脚本注入的视图标识(home / gallery / settings / notfound) */
 const view = window.__VIEW__ || 'home';
