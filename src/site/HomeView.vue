@@ -652,8 +652,8 @@ onUnmounted(() => {
 
 <template>
   <main class="wall" :class="{ ready: allLoaded, swapping }" aria-label="流动图片墙">
-    <!-- 列表请求中:名单未到,墙还是空的 -->
-    <div v-if="total === 0" class="wall-loading">加载中…</div>
+    <!-- 列表请求中:名单未到,不确定态进度条(无文字) -->
+    <div v-if="total === 0" class="wall-loading" role="status" aria-label="加载中" />
     <!-- 图片下载中:灰色占位相框已就位,这里给出进度,避免只剩空墙 -->
     <div
       v-else-if="total > 0 && !allLoaded"

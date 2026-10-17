@@ -9,11 +9,33 @@
   padding-top: 25px;
 }
 
+/* 名单加载中:不确定态进度条(无文字;图片阶段的「X / Y」是 .wall-progress) */
 .wall-loading {
-  text-align: center;
-  color: var(--text-sub);
-  padding: 120px 0;
-  letter-spacing: 0.3em;
+  position: relative;
+  width: min(320px, 60vw);
+  height: 4px;
+  margin: 132px auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.wall-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+  animation: wall-loading-slide 1.2s ease-in-out infinite;
+}
+@keyframes wall-loading-slide {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(350%); }
+}
+/* 浅色主题底槽改暗透明,否则几乎不可见 */
+:root[data-theme='light'] .wall-loading { background: rgba(15, 23, 42, 0.08); }
+@media (prefers-reduced-motion: reduce) {
+  .wall-loading::after { animation: none; opacity: 0.6; }
 }
 
 .row {
